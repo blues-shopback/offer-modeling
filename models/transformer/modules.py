@@ -3,6 +3,67 @@ import tensorflow as tf
 from models.transformer import modeling
 
 
+class SummarizeSequence(tf.Module):
+    def __init__(self, summary_type, d_model, n_head, d_head, dropout, dropatt, initializer,
+                 is_training=True, residual=True, pre_ln=True, name=None, dtype=tf.float32,
+                 use_proj=True):
+        super().__init__(name=name)
+        self.summary_type = summary_type
+        self.d_model = d_model
+        self.n_head = n_head
+        self.d_head = d_head
+        self.dropout = dropout
+        self.dropatt = dropatt
+        self.initializer = initializer
+        self.is_training = is_training
+        self.residual = residual
+        self.pre_ln = pre_ln
+        self.dtype = dtype
+        self.use_proj = use_proj
+
+    @tf.Module.with_name_scope
+    def __call__(self, hidden, input_mask=None):
+        if self.summary_type == "last":
+            summary = hidden[-1]
+        elif self.summary_type == "first":
+            summary = hidden[0]
+        elif self.summary_type == "mean":
+            summary = tf.reduce_mean(hidden, axis=0)
+        elif self.summary_type == "attn":
+            # Init layers
+            if not hasattr(self, "attn_layer"):
+                self.attn_layer = MultiheadAttn(
+                    self.d_model, self.n_head, self.d_head, self.dropout, self.dropatt,
+                    self.initializer)
+                self.summary_bias = tf.Variable(
+                    self.initializer([self.d_model], dtype=self.dtype),
+                    name="summary_bias")
+
+            bsz = tf.shape(hidden)[1]
+            bias = tf.tile(self.summary_bias[None, None], [1, bsz, 1])
+            if input_mask is not None:
+                input_mask = input_mask[None, :, :, None]
+
+            summary = self.attn_layer(bias, hidden, hidden, input_mask)
+            summary = summary[0]
+        else:
+            raise ValueError('Unsupported summary type {}'.format(self.summary_type))
+
+        # use another projection as in BERT
+        if self.use_proj:
+            if not hasattr(self, "dense"):
+                self.dense = tf.keras.layers.Dense(
+                    self.d_model, activation=tf.nn.tanh, kernel_initializer=self.initializer,
+                    name="proj")
+            summary = self.dense(summary)
+
+        if not hasattr(self, "dropout_layer"):
+            self.dropout_layer = tf.keras.layers.Dropout(self.dropout, name="dropout_layer")
+        summary = self.dropout_layer(summary, training=self.is_training)
+
+        return summary
+
+
 class MultiheadAttn(tf.Module):
     def __init__(self, d_model, n_head, d_head, dropout, dropatt, initializer,
                  is_training=True, name=None, dtype=tf.float32):

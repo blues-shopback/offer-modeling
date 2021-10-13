@@ -233,19 +233,9 @@ def relative_positional_encoding(qlen, klen, d_model, clamp_len, attn_type,
     return pos_emb
 
 
-def regression_loss(hidden, labels, initializer, scope, reuse=None,
-                    return_logits=False):
-    with tf.variable_scope(scope, reuse=reuse):
-        logits = tf.layers.dense(
-            hidden,
-            1,
-            kernel_initializer=initializer,
-            name='logit')
+def gather_for_masked_lm_loss(output, target, masked_pos):
+    mask_pos_idx = tf.where(tf.equal(masked_pos, 1))
+    output_masked = tf.gather_nd(output, mask_pos_idx)
+    target_masked = tf.gather_nd(target, mask_pos_idx)
 
-        logits = tf.squeeze(logits, axis=-1)
-        loss = tf.square(logits - labels)
-
-        if return_logits:
-            return loss, logits
-
-        return loss
+    return output_masked, target_masked

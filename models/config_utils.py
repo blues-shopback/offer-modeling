@@ -69,7 +69,7 @@ class BertConfig(BaseConfig):
     @staticmethod
     def get_keys():
         return ["n_layer", "d_model", "n_head", "d_head", "d_inner", "d_embed",
-                "dropout", "dropatt", "pre_ln"]
+                "dropout", "dropatt", "pre_ln", "inp_cate_num"]
 
 
 class PriceNetConfig(BaseConfig):
