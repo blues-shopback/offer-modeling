@@ -55,7 +55,7 @@ def positional_encoding(qlen, d_model, clamp_len, bsz=None, dtype=tf.float32):
     return pos_emb
 
 
-def abs_attn_core(q_head, k_head, v_head, attn_mask, dropatt, is_training,
+def abs_attn_core(q_head, k_head, v_head, attn_mask, dropout_layer, is_training,
                   scale):
     """Core absolute positional attention operations."""
 
@@ -66,8 +66,7 @@ def abs_attn_core(q_head, k_head, v_head, attn_mask, dropatt, is_training,
 
     # attention probability
     attn_prob = tf.nn.softmax(attn_score, 1)
-    drop_layer = tf.keras.layers.Dropout(dropatt)
-    attn_prob = drop_layer(attn_prob, training=is_training)
+    attn_prob = dropout_layer(attn_prob, training=is_training)
 
     # attention output
     attn_vec = tf.einsum('ijbn,jbnd->ibnd', attn_prob, v_head)
@@ -233,8 +232,8 @@ def relative_positional_encoding(qlen, klen, d_model, clamp_len, attn_type,
     return pos_emb
 
 
-def gather_for_masked_lm_loss(output, target, masked_pos):
-    mask_pos_idx = tf.where(tf.equal(masked_pos, 1))
+def gather_for_masked_lm_loss(output, target):
+    mask_pos_idx = tf.where(tf.math.greater_equal(target, 0))
     output_masked = tf.gather_nd(output, mask_pos_idx)
     target_masked = tf.gather_nd(target, mask_pos_idx)
 

@@ -101,7 +101,7 @@ class MultiheadAttn(tf.Module):
 
         # attention vector
         if not hasattr(self, "attn_dropout"):
-            self.attn_dropout = tf.keras.layers.Dropout(self.dropatt, name="attn-dropout")
+            self.attn_dropout = tf.keras.layers.Dropout(self.dropatt, name="attn_dropout")
         attn_vec = modeling.abs_attn_core(q_head, k_head, v_head, attn_mask, self.attn_dropout,
                                           self.is_training, scale)
         # post processing

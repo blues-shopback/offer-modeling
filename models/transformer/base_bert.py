@@ -4,7 +4,8 @@ from models.transformer import modules, modeling
 
 
 class LMLoss(tf.Module):
-    def __init__(self, n_token, initializer=None, lookup_table=None, name="lm-loss"):
+    def __init__(self, n_token, initializer=None, lookup_table=None, name="lm_loss"):
+        super().__init__(name=name)
         self.n_token = n_token
         self.lookup_table = lookup_table
         if initializer is None:
@@ -18,12 +19,12 @@ class LMLoss(tf.Module):
         if not hasattr(self, "softmax_b"):
             self.softmax_b = tf.Variable(
                 self.initializer([self.n_token], dtype=hidden.dtype),
-                name="softmax-bias"
+                name="softmax_bias"
             )
             if self.lookup_table is None:
                 self.softmax_w = tf.Variable(
                     self.initializer([self.n_token, hidden.shape[-1]], dtype=hidden.dtype),
-                    name="softmax-weight"
+                    name="softmax_weight"
                 )
             else:
                 self.softmax_w = self.lookup_table
@@ -35,7 +36,7 @@ class LMLoss(tf.Module):
 
 
 class AttnLayer(tf.Module):
-    def __init__(self, config, dtype, initializer, name="attn-layer", is_training=True):
+    def __init__(self, config, dtype, initializer, name="attn_layer", is_training=True):
         super().__init__(name=name)
         self.initializer = initializer
         self.config = config
@@ -58,8 +59,8 @@ class AttnLayer(tf.Module):
         if not hasattr(self, "pre_proj_layer"):
             self.pre_proj_layer = tf.keras.layers.Dense(
                 config.d_model, activation=None, kernel_initializer=self.initializer,
-                name="pre-proj")
-            self.pre_drop = tf.keras.layers.Dropout(config.dropout, name="pre-dropout")
+                name="pre_proj")
+            self.pre_drop = tf.keras.layers.Dropout(config.dropout, name="pre_dropout")
 
         if not hasattr(self, "multi_attns"):
             self.multi_attns = []
@@ -69,7 +70,7 @@ class AttnLayer(tf.Module):
                 multi_attn = modules.MultiheadAttn(
                     config.d_model, config.n_head, config.d_head, config.dropout, config.dropatt,
                     self.initializer, dtype=self.dtype, name="transformer_{}".format(i))
-                position_ffn = modules.PositionwiseFFN(
+                position_ffn = modules.PositionWiseFFN(
                     config.d_model, config.d_inner, config.dropout, self.initializer,
                     is_training=self.is_training, name="post_ffn_{}".format(i))
                 layer_norm1 = tf.keras.layers.LayerNormalization(
@@ -115,7 +116,7 @@ class AttnLayer(tf.Module):
 
 
 class BaseModel(tf.Module):
-    def __init__(self, config, initializer=None, name="base-model", dtype=tf.float32,
+    def __init__(self, config, initializer=None, name="base_model", dtype=tf.float32,
                  is_training=True):
         super().__init__(name=name)
         self.config = config
@@ -129,7 +130,25 @@ class BaseModel(tf.Module):
 
     @tf.Module.with_name_scope
     def masked_lm_loss(self, output, target):
-        
+        """
+        Args:
+            output: shape 3D [bsz, qlen, d_model]
+            target: shape 2D [bsz, qlen]
+                only eval on posistion value > 0
+                ex: [-1, 23, 43, -1], will eval 23, and 43.
+        """
+        if not hasattr(self, "lm_loss_layer"):
+            lookup_table = self.embedding_layer.lookup_table
+            self.lm_loss_layer = LMLoss(
+                self.config.n_token, self.initializer, lookup_table, name="lm_loss")
+        bsz = output.shape[0]
+        output_masked, target_masked = modeling.gather_for_masked_lm_loss(output, target)
+        output_masked = tf.reshape(output_masked, [bsz, -1, self.config.d_model])
+        target_masked = tf.reshape(target_masked, [bsz, -1])
+
+        loss, logits = self.lm_loss_layer(output_masked, target_masked)
+
+        return loss, logits
 
     @tf.Module.with_name_scope
     def __call__(self, inp, pos_cate=None, inp_mask=None):
@@ -147,22 +166,24 @@ class BaseModel(tf.Module):
             if pos_cate is not None:
                 self.inp_cate_embedding_layer = modules.Embedding(
                     config.inp_cate_num, config.d_embed, self.initializer, dtype=self.dtype,
-                    name="embedding-inp-cate")
+                    name="embedding_inp_cate")
             self.embedding_layer = modules.Embedding(
                 config.n_token, config.d_embed, self.initializer, dtype=self.dtype,
                 name="embedding")
             self.word_emb_dropout = tf.keras.layers.Dropout(
-                config.dropout, name="word-emb-dropout")
-            self.attn_layer = AttnLayer(config, self.dtype, is_training=self.is_training)
+                config.dropout, name="word_emb_dropout")
+            self.attn_layer = AttnLayer(
+                config, self.dtype, self.initializer,
+                is_training=self.is_training)
             # self.summarize_attn_layer = modules.SummarizeSequence(
             #     "attn", config.d_model, config.n_head, config.d_head, config.dropout,
             #     config.dropatt, self.initializer, name="summarize-attn-layer")
 
         inp_trans = tf.transpose(inp, [1, 0])
         word_emb = self.embedding_layer(inp_trans)
-        word_emb = self.word_emb_dropout(word_emb, is_training=self.is_training)
+        word_emb = self.word_emb_dropout(word_emb, training=self.is_training)
         pos_emb = modeling.positional_encoding(
-            qlen, config.d_model, clamp_len=-1, bsz=bsz, dtype=self.dtype)
+            qlen, config.d_embed, clamp_len=-1, bsz=bsz, dtype=self.dtype)
 
         if pos_cate is None:
             output = word_emb + pos_emb
@@ -172,8 +193,6 @@ class BaseModel(tf.Module):
             output = word_emb + pos_emb + inp_cate_emb
 
         output = self.attn_layer(output, inp_mask)
+        output = tf.transpose(output, [1, 0, 2])
 
-        return output  # [qlen, bsz, d_model]
-
-
-class PreTrainBertModel(tf.Module):
+        return output  # [bsz, qlen, d_model]

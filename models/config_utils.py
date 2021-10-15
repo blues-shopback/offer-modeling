@@ -36,7 +36,7 @@ class BaseConfig:
 
     def init_from_data(self, data_dict):
         for key in self.keys:
-            setattr(self, key, data_dict.get(key, None))
+            setattr(self, key, data_dict[key])
 
     def init_from_json(self, json_path):
         with open(json_path) as f:
@@ -69,7 +69,7 @@ class BertConfig(BaseConfig):
     @staticmethod
     def get_keys():
         return ["n_layer", "d_model", "n_head", "d_head", "d_inner", "d_embed",
-                "dropout", "dropatt", "pre_ln", "inp_cate_num"]
+                "dropout", "dropatt", "pre_ln", "inp_cate_num", "n_token"]
 
 
 class PriceNetConfig(BaseConfig):
