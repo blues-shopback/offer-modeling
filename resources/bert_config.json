@@ -1,0 +1,13 @@
+{
+    "d_embed": 16,
+    "d_head": 32,
+    "d_inner": 32,
+    "d_model": 16,
+    "dropatt": 0.1,
+    "dropout": 0.1,
+    "inp_cate_num": 4,
+    "n_head": 4,
+    "n_layer": 4,
+    "n_token": 50010,
+    "pre_ln": true
+}

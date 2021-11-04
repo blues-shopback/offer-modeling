@@ -5,8 +5,7 @@ from models.transformer import modeling
 
 class SummarizeSequence(tf.Module):
     def __init__(self, summary_type, d_model, n_head, d_head, dropout, dropatt, initializer,
-                 is_training=True, residual=True, pre_ln=True, name=None, dtype=tf.float32,
-                 use_proj=True):
+                 residual=True, name=None, dtype=tf.float32, use_proj=True):
         super().__init__(name=name)
         self.summary_type = summary_type
         self.d_model = d_model
@@ -15,9 +14,7 @@ class SummarizeSequence(tf.Module):
         self.dropout = dropout
         self.dropatt = dropatt
         self.initializer = initializer
-        self.is_training = is_training
         self.residual = residual
-        self.pre_ln = pre_ln
         self.dtype = dtype
         self.use_proj = use_proj
 
@@ -74,11 +71,10 @@ class MultiheadAttn(tf.Module):
         self.dropout = dropout
         self.dropatt = dropatt
         self.initializer = initializer
-        self.is_training = is_training
         self.dtype = dtype
 
     @tf.Module.with_name_scope
-    def __call__(self, q, k, v, attn_mask):
+    def __call__(self, q, k, v, attn_mask, is_training):
         """q, k, v dims: [seq, batch, emb]"""
         scale = 1 / (self.d_head ** 0.5)
         # Init layers
@@ -103,7 +99,7 @@ class MultiheadAttn(tf.Module):
         if not hasattr(self, "attn_dropout"):
             self.attn_dropout = tf.keras.layers.Dropout(self.dropatt, name="attn_dropout")
         attn_vec = modeling.abs_attn_core(q_head, k_head, v_head, attn_mask, self.attn_dropout,
-                                          self.is_training, scale)
+                                          is_training, scale)
         # post processing
         output = self.post_attn(v_inp, attn_vec)
 

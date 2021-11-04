@@ -29,7 +29,7 @@ class LMLoss(tf.Module):
             else:
                 self.softmax_w = self.lookup_table
 
-        logits = tf.einsum('ibd,nd->ibn', hidden, self.softmax_w) + self.softmax_b
+        logits = tf.einsum('bd,nd->bn', hidden, self.softmax_w) + self.softmax_b
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target,
                                                               logits=logits)
         return loss, logits
@@ -134,17 +134,15 @@ class BaseModel(tf.Module):
         Args:
             output: shape 3D [bsz, qlen, d_model]
             target: shape 2D [bsz, qlen]
-                only eval on posistion value > 0
-                ex: [-1, 23, 43, -1], will eval 23, and 43.
+                only eval on posistion value >= 0
+                ex: [-5643, 0, 43, -78], will eval 0, and 43.
         """
         if not hasattr(self, "lm_loss_layer"):
             lookup_table = self.embedding_layer.lookup_table
             self.lm_loss_layer = LMLoss(
                 self.config.n_token, self.initializer, lookup_table, name="lm_loss")
-        bsz = output.shape[0]
         output_masked, target_masked = modeling.gather_for_masked_lm_loss(output, target)
-        output_masked = tf.reshape(output_masked, [bsz, -1, self.config.d_model])
-        target_masked = tf.reshape(target_masked, [bsz, -1])
+        output_masked = tf.reshape(output_masked, [-1, self.config.d_model])
 
         loss, logits = self.lm_loss_layer(output_masked, target_masked)
 
