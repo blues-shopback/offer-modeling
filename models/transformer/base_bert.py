@@ -91,7 +91,7 @@ class AttnLayer(tf.Module):
             if config.pre_ln:
                 output_ori = output_h
                 output_h = ln1(output_h)
-                output_h = attn(output_h, output_h, output_h, attn_mask)
+                output_h = attn(output_h, output_h, output_h, attn_mask, self.is_training)
                 output_h = output_h + output_ori
 
                 output_ori = output_h
@@ -100,7 +100,7 @@ class AttnLayer(tf.Module):
                 output_h = output_h + output_ori
             else:
                 output_ori = output_h
-                output_h = attn(output_h, output_h, output_h, attn_mask)
+                output_h = attn(output_h, output_h, output_h, attn_mask, self.is_training)
                 output_h = ln1(output_h + output_ori)
 
                 output_ori = output_h

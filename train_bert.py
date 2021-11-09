@@ -60,13 +60,20 @@ def train(args, logger):
 
     # Init model
     config = BertConfig(json_path=args.config_path)
+    config_json_path = os.path.join(args.model_dir, "config.json")
+    config.to_json(config_json_path)
     initializer = tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.02)
     model = base_bert.BaseModel(config, initializer, is_training=True)
     global_step = tf.Variable(0, name="global_step", dtype=tf.int64)
     learning_rate_schedule = CustomSchedule(
         args.learning_rate, args.min_lr_ratio, args.train_steps, args.warmup_steps)
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate_schedule)
+    optimizer = tf.keras.optimizers.Adam(
+        learning_rate=learning_rate_schedule,
+        beta_1=args.adam_b1,
+        beta_2=args.adam_b2,
+        epsilon=args.adam_esp
+    )
 
     # Init checkpoint
     epoch = tf.Variable(1, name="epoch", dtype=tf.int64)
@@ -189,14 +196,17 @@ if __name__ == "__main__":
                         help="Maximum sequence length.")
     parser.add_argument('--init_checkpoint', type=str, default=None,
                         help="Model checkpoint to init.")
-    parser.add_argument('--train_steps', type=int, default=1000000,
+    parser.add_argument('--train_steps', type=int, default=500000,
                         help="Steps to stop training.")
     parser.add_argument('--gpu', type=str, default="0", help="Gpu to use. ex: 0,1")
-    parser.add_argument('--learning_rate', type=float, default=1e-4)
-    parser.add_argument('--warmup_steps', type=int, default=1000)
+    parser.add_argument('--learning_rate', type=float, default=4e-4)
+    parser.add_argument('--adam_b1', type=float, default=0.9)
+    parser.add_argument('--adam_b2', type=float, default=0.98)
+    parser.add_argument('--adam_esp', type=float, default=1e-6)
+    parser.add_argument('--warmup_steps', type=int, default=20000)
     parser.add_argument('--min_lr_ratio', type=float, default=0.001)
     parser.add_argument('--dropout', type=float, default=0.1)
-    parser.add_argument('--weight_decay', type=float, default=0.005)
+    # parser.add_argument('--weight_decay', type=float, default=0.005)
     parser.add_argument('--clip', type=float, default=1.0, help="Global norm clip value.")
     parser.add_argument('--print_status', type=int, default=500, help="Steps to print status.")
     parser.add_argument('--print_exp', type=int, default=1, help="Print example for debug.")
