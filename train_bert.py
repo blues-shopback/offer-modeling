@@ -6,6 +6,7 @@ import argparse
 
 import numpy as np
 import tensorflow as tf
+import tensorflow_addons as tfa
 
 from utils.logging_conf import get_logger
 from data_utils.offer_dataset import create_normal_mlm_dataset
@@ -68,11 +69,20 @@ def train(args, logger):
     learning_rate_schedule = CustomSchedule(
         args.learning_rate, args.min_lr_ratio, args.train_steps, args.warmup_steps)
 
-    optimizer = tf.keras.optimizers.Adam(
+    # optimizer = tf.keras.optimizers.Adam(
+    #     learning_rate=learning_rate_schedule,
+    #     beta_1=args.adam_b1,
+    #     beta_2=args.adam_b2,
+    #     epsilon=args.adam_esp
+    # )
+
+    optimizer = tfa.optimizers.AdamW(
+        weight_decay=args.weight_decay,
         learning_rate=learning_rate_schedule,
         beta_1=args.adam_b1,
         beta_2=args.adam_b2,
-        epsilon=args.adam_esp
+        epsilon=args.adam_esp,
+        name='AdamW',
     )
 
     # Init checkpoint
@@ -206,7 +216,7 @@ if __name__ == "__main__":
     parser.add_argument('--warmup_steps', type=int, default=20000)
     parser.add_argument('--min_lr_ratio', type=float, default=0.001)
     parser.add_argument('--dropout', type=float, default=0.1)
-    # parser.add_argument('--weight_decay', type=float, default=0.005)
+    parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--clip', type=float, default=1.0, help="Global norm clip value.")
     parser.add_argument('--print_status', type=int, default=500, help="Steps to print status.")
     parser.add_argument('--print_exp', type=int, default=1, help="Print example for debug.")
