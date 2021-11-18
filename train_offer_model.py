@@ -39,7 +39,7 @@ def train_step(model, opt, example, global_step, mlm_weight_schedule):
     global_step.assign_add(1)
     gnorm = tf.constant(0., dtype=tf.float32)
 
-    return loss, gnorm
+    return loss, gnorm, mlm_loss, contrastive_loss
 
 
 def train(args, logger):
@@ -115,11 +115,17 @@ def train(args, logger):
         ckpt.restore(args.init_checkpoint)
 
     _loss = 0.
+    _mlm_loss = 0.
+    _contrastive_loss = 0.
     _gnorm = 0.
     prev_step = 0
 
     log_str_format = ("Epoch: {:>3} Step: {:>8} | gnorm {:>4.2f} lr {:>9.3e} "
-                      "| loss {:>5.3f}   ")
+                      "| loss {:>5.3f} "
+                      "| mlm_loss {:>5.3f} "
+                      "| contrast_loss {:>5.3f} "
+                      "    "
+                      )
     # log_eval_format = ("\nEval loss: {:>5.3f}\n"
     #                    "Precision: {:>.3f} | Recall: {:>.3f} | F1: {:>.3f}   ")
 
@@ -159,40 +165,58 @@ def train(args, logger):
 
         # Epoch loop
         for example in processed_dataset:
-            loss, gnorm = train_step(model, optimizer, example, global_step, mlm_weight_schedule)
+            loss, gnorm, mlm_loss, contrastive_loss = train_step(
+                model, optimizer, example, global_step, mlm_weight_schedule)
 
             tf.summary.scalar('learning rate', data=optimizer.lr(global_step), step=global_step)
+            tf.summary.scalar('mlm loss weight', data=mlm_weight_schedule(global_step),
+                              step=global_step)
+            tf.summary.scalar('mlm_loss', data=mlm_loss, step=global_step)
+            tf.summary.scalar('contrastive_loss', data=contrastive_loss, step=global_step)
             tf.summary.scalar('loss', data=loss, step=global_step)
             tf.summary.scalar('gnorm', data=gnorm, step=global_step)
 
             print(log_str_format.format(
-                int(epoch), int(global_step), gnorm, float(optimizer.lr(global_step)), loss),
+                int(epoch), int(global_step), gnorm, float(optimizer.lr(global_step)),
+                loss, mlm_loss, contrastive_loss),
                 end="\r")
 
             _loss += loss
+            _mlm_loss += mlm_loss
+            _contrastive_loss += contrastive_loss
             _gnorm += gnorm
 
             if int(global_step) > 0 and int(global_step) % args.save_steps == 0:
                 save_path = manager.save()
                 logger.info("Save checkpoint to: {}".format(save_path))
                 avg_loss = _loss / (int(global_step) - prev_step)
+                avg_mlm_loss = _mlm_loss / (int(global_step) - prev_step)
+                avg_contract_loss = _contrastive_loss / (int(global_step) - prev_step)
                 avg_gnorm = _gnorm / (int(global_step) - prev_step)
                 log_str = log_str_format.format(
                     int(epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
-                    avg_loss
+                    avg_loss,
+                    avg_mlm_loss,
+                    avg_contract_loss
                 )
                 logger.info(log_str)
 
             if int(global_step) > 0 and int(global_step) % args.print_status == 0:
                 avg_loss = _loss / (int(global_step) - prev_step)
+                avg_mlm_loss = _mlm_loss / (int(global_step) - prev_step)
+                avg_contract_loss = _contrastive_loss / (int(global_step) - prev_step)
                 avg_gnorm = _gnorm / (int(global_step) - prev_step)
                 log_str = log_str_format.format(
                     int(epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
-                    avg_loss
+                    avg_loss,
+                    avg_mlm_loss,
+                    avg_contract_loss
                 )
                 logger.info(log_str)
-                _loss = 0
-                _gnorm = 0
+                _loss = 0.
+                _gnorm = 0.
+                _mlm_loss = 0.
+                _contrastive_loss = 0.
                 prev_step = int(global_step)
 
             if int(global_step) > args.train_steps:
