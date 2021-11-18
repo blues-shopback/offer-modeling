@@ -27,12 +27,12 @@ def train_step(model, opt, example, global_step, mlm_weight_schedule):
 
     with tf.GradientTape() as tape:
         pooled, output = model(masked_inp_padded, cate_pos_padded, attn_mask)
-        batch_mlm_loss = model.masked_lm_loss(output, masked_target)
+        batch_mlm_loss = model.get_mlm_loss(output, masked_target)
         batch_contrastive_loss = model.get_contrastive_loss(pooled, pos_pair_idx)
         mlm_loss = tf.reduce_mean(batch_mlm_loss)
         contrastive_loss = tf.reduce_mean(batch_contrastive_loss)
 
-        loss = mlm_weight_schedule() * mlm_loss + contrastive_loss
+        loss = mlm_weight_schedule(global_step) * mlm_loss + contrastive_loss
 
     grad = tape.gradient(loss, model.trainable_variables)
     opt.apply_gradients(zip(grad, model.trainable_variables))

@@ -42,7 +42,7 @@ class SummarizeSequence(tf.Module):
             if input_mask is not None:
                 input_mask = input_mask[None, :, :, None]
 
-            summary = self.attn_layer(bias, hidden, hidden, input_mask)
+            summary = self.attn_layer(bias, hidden, hidden, input_mask, self.is_training)
             summary = summary[0]
         else:
             raise ValueError('Unsupported summary type {}'.format(self.summary_type))
@@ -64,7 +64,7 @@ class SummarizeSequence(tf.Module):
 
 class MultiheadAttn(tf.Module):
     def __init__(self, d_model, n_head, d_head, dropout, dropatt, initializer,
-                 is_training=True, name=None, dtype=tf.float32):
+                 name=None, dtype=tf.float32):
         super().__init__(name=name)
         self.d_model = d_model
         self.n_head = n_head
