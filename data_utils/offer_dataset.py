@@ -135,14 +135,13 @@ def _add_pos_pair_and_label(example):
 
     positive_pair1 = tf.constant([0, 2], dtype=tf.int32)
     positive_pair2 = tf.constant([1, 3], dtype=tf.int32)
-    negative_pair1 = tf.constant([0, 1], dtype=tf.int32)
-    negative_pair2 = tf.constant([2, 3], dtype=tf.int32)
+    # negative_pair1 = tf.constant([0, 1], dtype=tf.int32)
+    # negative_pair2 = tf.constant([2, 3], dtype=tf.int32)
 
-    labels = tf.constant([1, 1, 0, 0], dtype=tf.int32)
+    # labels = tf.constant([1, 1, 0, 0], dtype=tf.int32)
 
-    pair_idx = tf.stack([positive_pair1, positive_pair2, negative_pair1, negative_pair2], axis=0)
-    example["pair_idx"] = pair_idx
-    example["pair_labels"] = labels
+    pair_idx = tf.stack([positive_pair1, positive_pair2], axis=0)
+    example["pos_pair_idx"] = pair_idx
 
     return example
 
@@ -152,28 +151,29 @@ def _explode_batch_and_shift_pair_idx(example):
         tensor = tf.reshape(tensor, [-1, tf.shape(tensor)[-1]])
         return tensor
 
+    batch = tf.shape(example["combined_padded"])[0]
+    batch_size = batch * 4
+
     example["combined_padded"] = _reshape(example["combined_padded"])
     example["masked_inp_padded"] = _reshape(example["masked_inp_padded"])
     example["cate_pos_padded"] = _reshape(example["cate_pos_padded"])
     example["mlm_pos_padded"] = _reshape(example["mlm_pos_padded"])
     example["attn_mask"] = _reshape(example["attn_mask"])
-    example["pair_labels"] = tf.reshape(example["pair_labels"], [-1, 1])
+    # example["pair_labels"] = tf.reshape(example["pair_labels"], [-1, 1])
 
-    pair_idx = example["pair_idx"]
-    batch = tf.shape(pair_idx)[0]
-    batch_size = batch * 4
+    pair_idx = example["pos_pair_idx"]
 
     range_tensor = tf.range(0, batch_size, delta=4, dtype=tf.int32)
     range_tensor_t = tf.transpose(range_tensor[None])
 
-    tile_tensor = tf.tile(range_tensor_t, [1, 8])
+    tile_tensor = tf.tile(range_tensor_t, [1, 4])
 
-    shift_idx_tensor = tf.reshape(tile_tensor, [batch_size, 2])
+    shift_idx_tensor = tf.reshape(tile_tensor, [batch*2, 2])
 
-    pair_idx = tf.reshape(pair_idx, [batch_size, 2])
+    pair_idx = tf.reshape(pair_idx, [batch*2, 2])
     pair_idx = pair_idx + shift_idx_tensor
 
-    example["pair_idx"] = pair_idx
+    example["pos_pair_idx"] = pair_idx
 
     return example
 
