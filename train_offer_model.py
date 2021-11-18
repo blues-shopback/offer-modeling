@@ -72,9 +72,7 @@ def train(args, logger):
     global_step = tf.Variable(0, name="global_step", dtype=tf.int64)
     learning_rate_schedule = CustomSchedule(
         args.learning_rate, args.min_lr_ratio, args.train_steps, args.warmup_steps)
-    parser.add_argument('--mlm_loss_weight_start', type=float, default=1.5)
-    parser.add_argument('--mlm_loss_weight_min', type=float, default=0.2)
-    parser.add_argument('--mlm_loss_weight_min_step', type=int, default=350000)
+
     mlm_weight_schedule = CustomWeightSchedule(
         start_value=args.mlm_loss_weight_start,
         min_value=args.mlm_loss_weight_min,
@@ -126,8 +124,9 @@ def train(args, logger):
     #                    "Precision: {:>.3f} | Recall: {:>.3f} | F1: {:>.3f}   ")
 
     _checked = False
+    finished = False
     # Training loop
-    while True:
+    while not finished:
         # Epoch start
         logger.info("Epoch {} start.".format(int(epoch)))
 
@@ -195,6 +194,20 @@ def train(args, logger):
                 _loss = 0
                 _gnorm = 0
                 prev_step = int(global_step)
+
+            if int(global_step) > args.train_steps:
+                save_path = manager.save()
+                logger.info("Save checkpoint to: {}".format(save_path))
+                avg_loss = _loss / (int(global_step) - prev_step)
+                avg_gnorm = _gnorm / (int(global_step) - prev_step)
+                log_str = log_str_format.format(
+                    int(epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
+                    avg_loss
+                )
+                logger.info(log_str)
+                logger.info("Finished training.")
+                finished = True
+                break
 
             # if int(global_step) > 0 and int(global_step) % args.eval_steps == 0:
             #     logger.info("Eval model...")
