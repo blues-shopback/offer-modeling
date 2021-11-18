@@ -6,11 +6,10 @@ import argparse
 
 import numpy as np
 import tensorflow as tf
-import tensorflow_addons as tfa
 
 from utils.logging_conf import get_logger
 from data_utils.offer_dataset import create_normal_mlm_dataset
-from models.train_utils import CustomSchedule
+from models.train_utils import CustomSchedule, AdamWeightDecay
 from models.transformer import base_bert
 from models.config_utils import BertConfig
 
@@ -31,9 +30,14 @@ def train_step(model, opt, example, global_step):
         loss = tf.reduce_mean(batch_loss)
 
     grad = tape.gradient(loss, model.trainable_variables)
-    grad_n, gnorm = tf.clip_by_global_norm(grad, clip_norm=1.0)
-    opt.apply_gradients(zip(grad_n, model.trainable_variables))
+    # if args.clip > 0:
+    #     grad_n, gnorm = tf.clip_by_global_norm(grad, clip_norm=1.0)
+    # else:
+    #     grad_n = grad
+    #     gnorm = 0
+    opt.apply_gradients(zip(grad, model.trainable_variables))
     global_step.assign_add(1)
+    gnorm = tf.constant(0., dtype=tf.float32)
 
     return loss, gnorm
 
@@ -69,21 +73,23 @@ def train(args, logger):
     learning_rate_schedule = CustomSchedule(
         args.learning_rate, args.min_lr_ratio, args.train_steps, args.warmup_steps)
 
-    # optimizer = tf.keras.optimizers.Adam(
-    #     learning_rate=learning_rate_schedule,
-    #     beta_1=args.adam_b1,
-    #     beta_2=args.adam_b2,
-    #     epsilon=args.adam_esp
-    # )
-
-    optimizer = tfa.optimizers.AdamW(
-        weight_decay=args.weight_decay,
-        learning_rate=learning_rate_schedule,
-        beta_1=args.adam_b1,
-        beta_2=args.adam_b2,
-        epsilon=args.adam_esp,
-        name='AdamW',
-    )
+    # Optimizer
+    if args.weight_decay <= 0:
+        optimizer = tf.keras.optimizers.Adam(
+            learning_rate=learning_rate_schedule,
+            beta_1=args.adam_b1,
+            beta_2=args.adam_b2,
+            epsilon=args.adam_esp
+        )
+    else:
+        optimizer = AdamWeightDecay(
+            weight_decay_rate=args.weight_decay,
+            learning_rate=learning_rate_schedule,
+            beta_1=args.adam_b1,
+            beta_2=args.adam_b2,
+            epsilon=args.adam_esp,
+            exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"],
+        )
 
     # Init checkpoint
     epoch = tf.Variable(1, name="epoch", dtype=tf.int64)
@@ -209,15 +215,15 @@ if __name__ == "__main__":
     parser.add_argument('--train_steps', type=int, default=500000,
                         help="Steps to stop training.")
     parser.add_argument('--gpu', type=str, default="0", help="Gpu to use. ex: 0,1")
-    parser.add_argument('--learning_rate', type=float, default=4e-4)
+    parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--adam_b1', type=float, default=0.9)
-    parser.add_argument('--adam_b2', type=float, default=0.98)
-    parser.add_argument('--adam_esp', type=float, default=1e-6)
-    parser.add_argument('--warmup_steps', type=int, default=20000)
+    parser.add_argument('--adam_b2', type=float, default=0.999)
+    parser.add_argument('--adam_esp', type=float, default=1e-7)
+    parser.add_argument('--warmup_steps', type=int, default=5000)
     parser.add_argument('--min_lr_ratio', type=float, default=0.001)
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--weight_decay', type=float, default=0.01)
-    parser.add_argument('--clip', type=float, default=1.0, help="Global norm clip value.")
+    parser.add_argument('--clip', type=float, default=0., help="Global norm clip value.")
     parser.add_argument('--print_status', type=int, default=500, help="Steps to print status.")
     parser.add_argument('--print_exp', type=int, default=1, help="Print example for debug.")
     parser.add_argument('--save_steps', type=int, default=1000, help="Steps to save model.")

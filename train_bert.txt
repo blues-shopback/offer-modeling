@@ -1,0 +1,1 @@
+python3 train_bert.py --config_path /root/code/offer-modeling/resources/bert_config.json --model_dir /data/blues/offer_modeling/base_bert_adamw_3 --train_data_glob_path "/data/blues/offer_modeling/cate_layer.tfrecord/*.tfrecord" --batch_size 128 --max_seq_len 128
