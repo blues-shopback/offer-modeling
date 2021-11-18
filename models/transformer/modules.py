@@ -5,7 +5,7 @@ from models.transformer import modeling
 
 class SummarizeSequence(tf.Module):
     def __init__(self, summary_type, d_model, n_head, d_head, dropout, dropatt, initializer,
-                 residual=True, name=None, dtype=tf.float32, use_proj=True):
+                 residual=True, name=None, dtype=tf.float32, use_proj=True, is_training=True):
         super().__init__(name=name)
         self.summary_type = summary_type
         self.d_model = d_model
@@ -17,6 +17,7 @@ class SummarizeSequence(tf.Module):
         self.residual = residual
         self.dtype = dtype
         self.use_proj = use_proj
+        self.is_training = is_training
 
     @tf.Module.with_name_scope
     def __call__(self, hidden, input_mask=None):
