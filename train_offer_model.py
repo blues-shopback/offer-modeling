@@ -8,14 +8,47 @@ import numpy as np
 import tensorflow as tf
 
 from utils.logging_conf import get_logger
+from utils.encoder import get_encoder
+
 from data_utils.offer_dataset import create_neg_pair_dataset
+# from data_utils.offer_inference import encode_and_combine
+
 from models.train_utils import CustomSchedule, AdamWeightDecay, CustomWeightSchedule
 from models.transformer import offer_model
 from models.config_utils import BertConfig
 
 
+# encoder = None
+#
+# 
+# def eval(logger, model, query, offers, enc_fn):
+#     if encoder is None:
+#         dir_path = os.path.dirname(os.path.realpath(__file__))
+#         bpe_path = os.path.join(dir_path, "resources", "bpe", "bpe_merge.txt")
+#         encoder = get_encoder(bpe_path, 50000)
+#
+#     inps = []
+#     cates = []
+#     attn_masks = []
+#
+#     query_inp, query_cate, query_attn_mask = enc_fn(title=query, desc="")
+#     inps.append(query_inp)
+#     cates.append(query_cate)
+#     attn_masks.append(query_attn_mask)
+#
+#     for offer in offers:
+#         offer_inp, offer_cate, offer_attn_mask = enc_fn(title=offer["title"], desc=offer["desc"])
+#         inps.append(offer_inp)
+#         cates.append(offer_cate)
+#         attn_masks.append(offer_attn_mask)
+#
+#     pooled, _ = model(inps, cates, attn_masks)
+#
+#     logger.info("eval")
+
+
 @tf.function
-def train_step(model, opt, example, global_step, mlm_weight_schedule):
+def train_step(model, opt, example, global_step, mlm_weight_schedule, temperature):
     combined_padded = example["combined_padded"]
     masked_inp_padded = example["masked_inp_padded"]
     mlm_pos_padded = example["mlm_pos_padded"]
@@ -28,7 +61,7 @@ def train_step(model, opt, example, global_step, mlm_weight_schedule):
     with tf.GradientTape() as tape:
         pooled, output = model(masked_inp_padded, cate_pos_padded, attn_mask)
         batch_mlm_loss = model.get_mlm_loss(output, masked_target)
-        batch_contrastive_loss = model.get_contrastive_loss(pooled, pos_pair_idx)
+        batch_contrastive_loss = model.get_contrastive_loss(pooled, pos_pair_idx, temp=temperature)
         mlm_loss = tf.reduce_mean(batch_mlm_loss)
         contrastive_loss = tf.reduce_mean(batch_contrastive_loss)
 
@@ -166,7 +199,7 @@ def train(args, logger):
         # Epoch loop
         for example in processed_dataset:
             loss, gnorm, mlm_loss, contrastive_loss = train_step(
-                model, optimizer, example, global_step, mlm_weight_schedule)
+                model, optimizer, example, global_step, mlm_weight_schedule, args.temperature)
 
             tf.summary.scalar('learning rate', data=optimizer.lr(global_step), step=global_step)
             tf.summary.scalar('mlm loss weight', data=mlm_weight_schedule(global_step),
@@ -269,6 +302,7 @@ if __name__ == "__main__":
                         help="Steps to stop training.")
     parser.add_argument('--gpu', type=str, default="0", help="Gpu to use. ex: 0,1")
     parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--mlm_loss_weight_start', type=float, default=1.5)
     parser.add_argument('--mlm_loss_weight_min', type=float, default=0.2)
     parser.add_argument('--mlm_loss_weight_min_step', type=int, default=350000)
