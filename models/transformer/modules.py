@@ -21,6 +21,11 @@ class SummarizeSequence(tf.Module):
 
     @tf.Module.with_name_scope
     def __call__(self, hidden, input_mask=None):
+        """
+        Args:
+            hidden: shape 3D [bsz, qlen, d_model]
+        """
+        hidden = tf.transpose(hidden, [1, 0, 2])
         if self.summary_type == "last":
             summary = hidden[-1]
         elif self.summary_type == "first":
