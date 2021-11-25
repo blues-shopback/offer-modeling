@@ -24,8 +24,11 @@ class SummarizeSequence(tf.Module):
         """
         Args:
             hidden: shape 3D [bsz, qlen, d_model]
+            input_mask: shape 2D [bsz, qlen]
         """
         hidden = tf.transpose(hidden, [1, 0, 2])
+        if input_mask is not None:
+            input_mask = tf.transpose(input_mask)
         if self.summary_type == "last":
             summary = hidden[-1]
         elif self.summary_type == "first":
