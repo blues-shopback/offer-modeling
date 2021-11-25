@@ -1,14 +1,17 @@
 import os
+import csv
 import json
 import time
 import random
 import argparse
+import functools
 
 import numpy as np
 import tensorflow as tf
 
 from utils.logging_conf import get_logger
 from utils.encoder import get_encoder
+from utils.offer_model_eval import eval_query, eval_pairs, encode_and_combine
 
 from data_utils.offer_dataset import create_neg_pair_dataset
 # from data_utils.offer_inference import encode_and_combine
@@ -18,33 +21,59 @@ from models.transformer import offer_model
 from models.config_utils import BertConfig
 
 
-# encoder = None
-#
-# 
-# def eval(logger, model, query, offers, enc_fn):
-#     if encoder is None:
-#         dir_path = os.path.dirname(os.path.realpath(__file__))
-#         bpe_path = os.path.join(dir_path, "resources", "bpe", "bpe_merge.txt")
-#         encoder = get_encoder(bpe_path, 50000)
-#
-#     inps = []
-#     cates = []
-#     attn_masks = []
-#
-#     query_inp, query_cate, query_attn_mask = enc_fn(title=query, desc="")
-#     inps.append(query_inp)
-#     cates.append(query_cate)
-#     attn_masks.append(query_attn_mask)
-#
-#     for offer in offers:
-#         offer_inp, offer_cate, offer_attn_mask = enc_fn(title=offer["title"], desc=offer["desc"])
-#         inps.append(offer_inp)
-#         cates.append(offer_cate)
-#         attn_masks.append(offer_attn_mask)
-#
-#     pooled, _ = model(inps, cates, attn_masks)
-#
-#     logger.info("eval")
+encoder = None
+enc_fn = None
+
+
+def eval(logger, model, args):
+    global encoder, enc_fn
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    if encoder is None:
+        bpe_path = os.path.join(dir_path, "resources", "bpe", "bpe_merge.txt")
+        encoder = get_encoder(bpe_path, 50000)
+    if enc_fn is None:
+        enc_fn = functools.partial(
+            encode_and_combine,
+            encoder=encoder,
+            inp_len=args.max_seq_len,
+            BOS_id=50000,
+            EOS_id=50001,
+            SEP_id=50002,
+            PAD_id=50001
+        )
+    # Start eval pairs
+    logger.info("Eval pairs")
+    pair_file_path = os.path.join(
+        dir_path,
+        "resources",
+        "offer_model_eval_data",
+        "pair20211104.csv")
+
+    pairs = []
+    with open(pair_file_path, "r") as f:
+        reader = csv.DictReader(f)
+        for d in reader:
+            pairs.append(d)
+
+    pair_result_str = eval_pairs(model, enc_fn, pairs)
+
+    logger.info(pair_result_str)
+
+    # Start eval query
+    logger.info("Eval query")
+    query_file_path = os.path.join(
+        dir_path,
+        "resources",
+        "offer_model_eval_data",
+        "eval_query_iphone_12.csv")
+    offers = []
+    with open(query_file_path, "r") as f:
+        reader = csv.DictReader(f)
+        for d in reader:
+            offers.append(d)
+    query = "iPhone 12"
+    query_result_str = eval_query(model, enc_fn, query, offers)
+    logger.info(query_result_str)
 
 
 @tf.function
@@ -219,6 +248,9 @@ def train(args, logger):
             _contrastive_loss += contrastive_loss
             _gnorm += gnorm
 
+            if int(global_step) > 0 and int(global_step) % args.eval_steps == 0:
+                eval(logger, model, args)
+
             if int(global_step) > 0 and int(global_step) % args.save_steps == 0:
                 save_path = manager.save()
                 logger.info("Save checkpoint to: {}".format(save_path))
@@ -290,8 +322,8 @@ if __name__ == "__main__":
     # parser.add_argument('--eval_data_path', type=str,
     #                     default="/glusterfs/blues/rerank/dataset_20200924/valid_4M.txt",
     #                     help="eval data path.")
-    parser.add_argument('--eval_steps', type=int, default=1000, help="Steps eval data each.")
-    parser.add_argument('--eval_num', type=int, default=100, help="Number of data to eval.")
+    parser.add_argument('--eval_steps', type=int, default=5000, help="Steps eval data each.")
+    # parser.add_argument('--eval_num', type=int, default=100, help="Number of data to eval.")
     parser.add_argument('--batch_size', type=int, default=32,
                         help="Model training batch size.")
     parser.add_argument('--max_seq_len', type=int, default=256,
@@ -315,9 +347,9 @@ if __name__ == "__main__":
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--clip', type=float, default=0., help="Global norm clip value.")
-    parser.add_argument('--print_status', type=int, default=500, help="Steps to print status.")
+    parser.add_argument('--print_status', type=int, default=1000, help="Steps to print status.")
     parser.add_argument('--print_exp', type=int, default=1, help="Print example for debug.")
-    parser.add_argument('--save_steps', type=int, default=1000, help="Steps to save model.")
+    parser.add_argument('--save_steps', type=int, default=5000, help="Steps to save model.")
     parser.add_argument('--debug', action='store_true', help="Debug mode.")
 
     args = parser.parse_args()
