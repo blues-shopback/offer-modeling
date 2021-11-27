@@ -24,7 +24,7 @@ encoder = None
 enc_fn = None
 
 
-def eval(logger, model, args):
+def eval_step(logger, model, args):
     global encoder, enc_fn
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if encoder is None:
@@ -273,7 +273,7 @@ def train(args, logger):
             _gnorm += gnorm
 
             if int(global_step) > 0 and int(global_step) % args.eval_steps == 0:
-                eval(logger, model, args)
+                eval_step(logger, model, args)
 
             if int(global_step) > 0 and int(global_step) % args.save_steps == 0:
                 save_path = manager.save()
@@ -315,7 +315,9 @@ def train(args, logger):
                 avg_gnorm = _gnorm / (int(global_step) - prev_step)
                 log_str = log_str_format.format(
                     int(epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
-                    avg_loss
+                    avg_loss,
+                    avg_mlm_loss,
+                    avg_contract_loss
                 )
                 logger.info(log_str)
                 logger.info("Finished training.")

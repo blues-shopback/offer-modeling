@@ -269,7 +269,7 @@ def create_neg_pair_dataset(
     return ds7
 
 
-def create_neg_pair_datase_v2(
+def create_neg_pair_dataset_v2(
     ds_list, batch_size, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
     MSK_id=50003, mask_prob=0.15, rand_token_size=50000
 ):
