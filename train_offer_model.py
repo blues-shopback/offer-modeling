@@ -13,8 +13,7 @@ from utils.logging_conf import get_logger
 from utils.encoder import get_encoder
 from utils.offer_model_eval import eval_query, eval_pairs, encode_and_combine
 
-from data_utils.offer_dataset import create_neg_pair_dataset
-# from data_utils.offer_inference import encode_and_combine
+from data_utils.offer_dataset import create_neg_pair_dataset_v2
 
 from models.train_utils import CustomSchedule, AdamWeightDecay, CustomWeightSchedule
 from models.transformer import offer_model
@@ -102,6 +101,32 @@ def train_step(model, opt, example, global_step, mlm_weight_schedule, temperatur
     gnorm = tf.constant(0., dtype=tf.float32)
 
     return loss, gnorm, mlm_loss, contrastive_loss
+
+
+def create_dataset(file_list, num_ds=16):
+    random.shuffle(file_list)
+
+    np_file_list = np.array(file_list)
+
+    idx_range = np.arange(len(file_list))
+    ran_idx = np.random.permutation(idx_range)
+
+    ds_list = []
+
+    ds_file_num = len(file_list) // num_ds
+    for i in range(num_ds):
+        start = i * ds_file_num
+        ran_idx
+        ran_index1 = ran_idx[start:]
+        ran_index2 = ran_idx[:start]
+
+        ran_index = np.concatenate((ran_index1, ran_index2))
+
+        ran_file_list = np_file_list[ran_index]
+        dataset = tf.data.TFRecordDataset(ran_file_list)
+        ds_list.append(dataset)
+
+    return ds_list
 
 
 def train(args, logger):
@@ -199,10 +224,9 @@ def train(args, logger):
         logger.info("Epoch {} start.".format(int(epoch)))
 
         # Init dataset
-        random.shuffle(file_list)
-        dataset = tf.data.TFRecordDataset(file_list)
-        processed_dataset = create_neg_pair_dataset(
-            dataset,
+        dataset_list = create_dataset(file_list, num_ds=args.num_dataset)
+        processed_dataset = create_neg_pair_dataset_v2(
+            dataset_list,
             batch_size=BATCH_SIZE,
             inp_len=MAX_SEQ_LEN,
             BOS_id=50000,
@@ -351,6 +375,8 @@ if __name__ == "__main__":
     parser.add_argument('--print_exp', type=int, default=1, help="Print example for debug.")
     parser.add_argument('--save_steps', type=int, default=5000, help="Steps to save model.")
     parser.add_argument('--debug', action='store_true', help="Debug mode.")
+    parser.add_argument('--num_dataset', type=int, default=16,
+                        help="number of file to load to form batch.")
 
     args = parser.parse_args()
 

@@ -152,7 +152,8 @@ def _explode_batch_and_shift_pair_idx(example):
         return tensor
 
     batch = tf.shape(example["combined_padded"])[0]
-    batch_size = batch * 4
+    inp_batch = tf.shape(example["combined_padded"])[1]
+    batch_size = batch * inp_batch
 
     example["combined_padded"] = _reshape(example["combined_padded"])
     example["masked_inp_padded"] = _reshape(example["masked_inp_padded"])
@@ -168,9 +169,9 @@ def _explode_batch_and_shift_pair_idx(example):
 
     tile_tensor = tf.tile(range_tensor_t, [1, 4])
 
-    shift_idx_tensor = tf.reshape(tile_tensor, [batch*2, 2])
+    shift_idx_tensor = tf.reshape(tile_tensor, [batch_size//2, 2])
 
-    pair_idx = tf.reshape(pair_idx, [batch*2, 2])
+    pair_idx = tf.reshape(pair_idx, [batch_size//2, 2])
     pair_idx = pair_idx + shift_idx_tensor
 
     example["pos_pair_idx"] = pair_idx
@@ -197,9 +198,9 @@ def preprocess_token(ds, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, 
     return ds
 
 
-def batch_neg_pair(ds, batch_size):
-    assert batch_size % 4 == 0
-    batch = batch_size // 4
+def batch_neg_pair(ds, total_batch_size, inp_batch=4):
+    assert total_batch_size % inp_batch == 0
+    batch = total_batch_size // inp_batch
 
     ds = (
         ds.batch(batch, drop_remainder=True)
@@ -261,7 +262,69 @@ def create_neg_pair_dataset(
     ds4 = ds3.group_by_window(lambda x: x["l1_hash"], lambda key, ds: ds.batch(2), window_size=2)
     ds5 = ds4.filter(_check_catel2_equal)
 
+    # bsz: 4
     ds6 = ds5.map(_add_pos_pair_and_label).map(_remove_non_use_tensor)
     ds7 = batch_neg_pair(ds6, batch_size)
+
+    return ds7
+
+
+def create_neg_pair_datase_v2(
+    ds_list, batch_size, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
+    MSK_id=50003, mask_prob=0.15, rand_token_size=50000
+):
+
+    def _hash_cate_l1(example, num_buckets=1569):
+        cate_l1 = tf.strings.to_hash_bucket(example["cate_l1"], num_buckets=num_buckets)
+        example["l1_hash"] = cate_l1
+        return example
+
+    def _check_catel2_equal(example):
+        cate_l2 = example["cate_l2"]
+        rev_l2 = tf.reverse(cate_l2, axis=[-1])
+        not_eq = tf.math.not_equal(cate_l2, rev_l2)
+        all_not_eq = tf.reduce_all(not_eq)
+        return all_not_eq
+
+    def _remove_non_use_tensor(example):
+        del example["cate_l1"]
+        del example["cate_l2"]
+        del example["l1_hash"]
+        return example
+
+    def _explode_zip(*example):
+        keys = list(example[0].keys())
+        combined_example = {}
+        for key in keys:
+            v = []
+            for exa in example:
+                v.append(exa[key])
+            batch_v = tf.concat(v, axis=0)
+            combined_example[key] = batch_v
+
+        return combined_example
+
+    def _process_ds(ds):
+        ds = preprocess_token(ds, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id, SEP_id=SEP_id,
+                              PAD_id=PAD_id, MSK_id=MSK_id, mask_prob=mask_prob,
+                              rand_token_size=rand_token_size)
+
+        ds2 = ds.map(_hash_cate_l1)
+        ds3 = ds2.shuffle(batch_size*16)
+        ds4 = ds3.group_by_window(lambda x: x["l1_hash"],
+                                  lambda key, ds: ds.batch(2), window_size=2)
+        ds5 = ds4.filter(_check_catel2_equal)
+        # bsz: 4
+        ds6 = ds5.map(_add_pos_pair_and_label).map(_remove_non_use_tensor)
+        return ds6
+
+    num_ds = len(ds_list)
+    proced_ds = tuple([_process_ds(ds) for ds in ds_list])
+
+    zip_ds = tf.data.Dataset.zip(proced_ds)
+    zip_batch_ds = zip_ds.map(_explode_zip)
+    pre_batch = num_ds * 4
+
+    ds7 = batch_neg_pair(zip_batch_ds, batch_size, inp_batch=pre_batch)
 
     return ds7
