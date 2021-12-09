@@ -132,6 +132,7 @@ def _add_pos_pair_and_label(example):
     example["cate_pos_padded"] = _duplicate_first(example["cate_pos_padded"])
     example["mlm_pos_padded"] = _duplicate_first(example["mlm_pos_padded"])
     example["attn_mask"] = _duplicate_first(example["attn_mask"])
+    example["l1_hash"] = _duplicate_first(example["l1_hash"])
 
     positive_pair1 = tf.constant([0, 2], dtype=tf.int32)
     positive_pair2 = tf.constant([1, 3], dtype=tf.int32)
@@ -160,6 +161,7 @@ def _explode_batch_and_shift_pair_idx(example):
     example["cate_pos_padded"] = _reshape(example["cate_pos_padded"])
     example["mlm_pos_padded"] = _reshape(example["mlm_pos_padded"])
     example["attn_mask"] = _reshape(example["attn_mask"])
+    example["l1_hash"] = _reshape(example["l1_hash"])
     # example["pair_labels"] = tf.reshape(example["pair_labels"], [-1, 1])
 
     pair_idx = example["pos_pair_idx"]
@@ -250,7 +252,7 @@ def create_neg_pair_dataset(
     def _remove_non_use_tensor(example):
         del example["cate_l1"]
         del example["cate_l2"]
-        del example["l1_hash"]
+
         return example
 
     ds = preprocess_token(ds, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id, SEP_id=SEP_id,
@@ -289,7 +291,7 @@ def create_neg_pair_dataset_v2(
     def _remove_non_use_tensor(example):
         del example["cate_l1"]
         del example["cate_l2"]
-        del example["l1_hash"]
+
         return example
 
     def _explode_zip(*example):
