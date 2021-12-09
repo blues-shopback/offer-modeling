@@ -32,6 +32,7 @@ def _combine_inp(example_proto, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=
     )[:inp_len]
 
     combined = tf.cast(combined, tf.int32)
+    cate_pos_token = tf.cast(cate_pos_token, tf.int32)
 
     example_proto["combined"] = combined
     example_proto["cate_pos"] = cate_pos_token
@@ -161,7 +162,7 @@ def _explode_batch_and_shift_pair_idx(example):
     example["cate_pos_padded"] = _reshape(example["cate_pos_padded"])
     example["mlm_pos_padded"] = _reshape(example["mlm_pos_padded"])
     example["attn_mask"] = _reshape(example["attn_mask"])
-    example["l1_hash"] = _reshape(example["l1_hash"])
+    example["l1_hash"] = tf.reshape(example["l1_hash"], [-1])
     # example["pair_labels"] = tf.reshape(example["pair_labels"], [-1, 1])
 
     pair_idx = example["pos_pair_idx"]
