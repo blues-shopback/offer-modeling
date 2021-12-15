@@ -5,9 +5,10 @@ from models.transformer import modules, base_bert
 
 class OfferModel(tf.Module):
     def __init__(self, config, initializer=None, name="offer_model", dtype=tf.float32,
-                 is_training=True):
+                 cate_size=None, is_training=True):
         super().__init__(name=name)
         self.config = config
+        self.cate_size = cate_size
         if initializer is None:
             self.initializer = tf.keras.initializers.TruncatedNormal(
                 mean=0.0, stddev=0.02, seed=None)
@@ -53,6 +54,14 @@ class OfferModel(tf.Module):
         return loss
 
     @tf.Module.with_name_scope
+    def get_cate_loss(self, target):
+        logits = tf.einsum('bd,nd->bn', self.pooled_cate, self.cate_w) + self.cate_b
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target,
+                                                              logits=logits)
+
+        return loss
+
+    @tf.Module.with_name_scope
     def __call__(self, inp, pos_cate=None, inp_mask=None):
         config = self.config
 
@@ -74,8 +83,33 @@ class OfferModel(tf.Module):
                 dtype=self.dtype,
                 use_proj=self.is_training
             )
+            if self.cate_size is not None:
+                self.cate_pooler = modules.SummarizeSequence(
+                    summary_type="attn",
+                    d_model=config.d_model,
+                    n_head=config.n_head,
+                    d_head=config.d_head,
+                    dropout=config.dropout,
+                    dropatt=config.dropatt,
+                    initializer=self.initializer,
+                    is_training=self.is_training,
+                    name="attn_pooler_cate",
+                    dtype=self.dtype,
+                    use_proj=True
+                )
+                self.cate_w = tf.Variable(
+                    self.initializer([self.cate_size, config.d_model], dtype=self.dtype),
+                    name="cate_weight"
+                )
+                self.cate_b = tf.Variable(
+                    self.initializer([self.cate_size], dtype=self.dtype),
+                    name="cate_bias"
+                )
 
         output = self.encoder(inp, pos_cate, inp_mask)
         pooled = self.pooler(output, inp_mask)
+
+        if self.cate_size is not None:
+            self.pooled_cate = self.cate_pooler(output, inp_mask)
 
         return pooled, output
