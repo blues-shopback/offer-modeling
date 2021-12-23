@@ -240,7 +240,8 @@ def train(args, logger):
             PAD_id=50001,
             MSK_id=50003,
             mask_prob=0.15,
-            rand_token_size=50000
+            rand_token_size=50000,
+            add_cate_prob=args.add_cate_prob
         )
 
         # Check model parameters
@@ -337,15 +338,6 @@ def train(args, logger):
                 finished = True
                 break
 
-            # if int(global_step) > 0 and int(global_step) % args.eval_steps == 0:
-            #     logger.info("Eval model...")
-            #     predicts, eval_losses, targets = next(eval_gen)
-            #     eval_loss = np.mean(eval_losses)
-            #     precision, recall, f1 = matrix(predicts, targets)
-            #     logger.info(log_eval_format.format(
-            #         eval_loss, precision, recall, f1
-            #     ))
-
         # Epoch end
         epoch.assign_add(1)
 
@@ -393,6 +385,8 @@ if __name__ == "__main__":
                         help="number of file to load to form batch.")
     parser.add_argument('--num_cate', type=int, default=1569,
                         help="number of category for classified task.")
+    parser.add_argument('--add_cate_prob', type=float, default=0.1,
+                        help="probibilty for adding category text in input.")
 
     args = parser.parse_args()
 
