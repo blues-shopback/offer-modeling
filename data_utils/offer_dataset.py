@@ -137,7 +137,7 @@ def create_neg_pair_dataset_v2(
                               add_mlm_token=add_mlm_token)
 
         ds2 = ds.map(_hash_cate_l1)
-        ds3 = ds2.shuffle(batch_size*16)
+        ds3 = ds2.shuffle(batch_size*32)
         ds4 = ds3.group_by_window(lambda x: x["l1_hash"],
                                   lambda key, ds: ds.batch(2), window_size=2)
         ds5 = ds4.filter(_check_catel2_equal)

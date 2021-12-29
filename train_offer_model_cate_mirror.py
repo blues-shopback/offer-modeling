@@ -341,7 +341,7 @@ def train(args, logger):
                 avg_category_loss = _category_loss / (int(global_step) - prev_step)
                 avg_gnorm = _gnorm / (int(global_step) - prev_step)
                 log_str = log_str_format.format(
-                    int(epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
+                    int(mean_epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
                     avg_loss,
                     avg_mlm_loss,
                     avg_contract_loss,
@@ -356,7 +356,7 @@ def train(args, logger):
                 avg_category_loss = _category_loss / (int(global_step) - prev_step)
                 avg_gnorm = _gnorm / (int(global_step) - prev_step)
                 log_str = log_str_format.format(
-                    int(epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
+                    int(mean_epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
                     avg_loss,
                     avg_mlm_loss,
                     avg_contract_loss,
@@ -376,7 +376,7 @@ def train(args, logger):
                 avg_loss = _loss / (int(global_step) - prev_step)
                 avg_gnorm = _gnorm / (int(global_step) - prev_step)
                 log_str = log_str_format.format(
-                    int(epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
+                    int(mean_epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
                     avg_loss,
                     avg_mlm_loss,
                     avg_contract_loss,
