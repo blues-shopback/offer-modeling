@@ -98,7 +98,7 @@ def create_normal_mlm_dataset(
 def create_neg_pair_dataset_v2(
     ds_list, batch_size, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
     MSK_id=50003, mask_prob=0.15, rand_token_size=50000, add_cate_prob=0.1,
-    add_mlm_token=True, prefetch=64
+    add_mlm_token=True, prefetch=256
 ):
 
     def _hash_cate_l1(example, num_buckets=1569):
