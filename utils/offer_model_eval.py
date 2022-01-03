@@ -2,7 +2,8 @@ import tensorflow as tf
 
 
 def encode_and_combine(encoder, title, desc,
-                       inp_len=128, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001):
+                       inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
+                       cate_list=None):
 
     title_enc = encoder.encode(title)
     desc_enc = encoder.encode(desc)
@@ -12,21 +13,43 @@ def encode_and_combine(encoder, title, desc,
     if desc_enc is None:
         desc_enc = []
 
-    combined = [BOS_id] + title_enc + [SEP_id] + desc_enc + [EOS_id]
-    combined = combined[:inp_len]
+    if cate_list is not None:
+        cate_enc = []
+        for cate in cate_list:
+            _cate_enc = encoder.encode(cate)
+            if _cate_enc:
+                cate_enc += _cate_enc
+        combined = [BOS_id] + title_enc + [SEP_id] + cate_enc + [SEP_id] + desc_enc + [EOS_id]
+        combined = combined[:inp_len]
 
-    cate_pos_token = [0] + [0] * len(title_enc) + [0] + [1] * len(desc_enc) + [1]
-    cate_pos_token = cate_pos_token[:inp_len]
+        cate_pos_token = (
+            [0]
+            + [0] * len(title_enc) + [0]  # title
+            + [1] * len(cate_enc) + [1]  # category
+            + [2] * len(desc_enc) + [2]  # description
+        )
+        cate_pos_token = cate_pos_token[:inp_len]
+
+    else:
+        combined = [BOS_id] + title_enc + [SEP_id] + desc_enc + [EOS_id]
+        combined = combined[:inp_len]
+
+        cate_pos_token = [0] + [0] * len(title_enc) + [0] + [1] * len(desc_enc) + [1]
+        cate_pos_token = cate_pos_token[:inp_len]
 
     if len(combined) < inp_len:
         pad_len = inp_len - len(combined)
         combined_pad = combined + [PAD_id] * pad_len
-        cate_pos_token_pad = cate_pos_token + [2] * pad_len
+        if cate_list is None:
+            cate_pad_id = 2
+        else:
+            cate_pad_id = 3
+        cate_pos_token_pad = cate_pos_token + [cate_pad_id] * pad_len
         attn_mask = [0] * len(combined) + [1] * pad_len
     else:
         combined_pad = combined
         cate_pos_token_pad = cate_pos_token
-        attn_mask = [0] * len(combined_pad)
+        attn_mask = [0] * len(combined)
 
     return combined_pad, cate_pos_token_pad, attn_mask
 
@@ -47,6 +70,21 @@ def _build_enc(title_desc_list, enc_fn):
 
     for title, desc in title_desc_list:
         offer_combined, offer_cate_pos, offer_attn_mask = enc_fn(title=title, desc=desc)
+        combined_list.append(offer_combined)
+        cate_pos_list.append(offer_cate_pos)
+        attn_mask_list.append(offer_attn_mask)
+
+    return combined_list, cate_pos_list, attn_mask_list
+
+
+def _build_enc_with_cate(title_cate_desc_list, enc_fn):
+    combined_list = []
+    cate_pos_list = []
+    attn_mask_list = []
+
+    for title, cate_list, desc in title_cate_desc_list:
+        offer_combined, offer_cate_pos, offer_attn_mask = enc_fn(
+            title=title, desc=desc, cate_list=cate_list)
         combined_list.append(offer_combined)
         cate_pos_list.append(offer_cate_pos)
         attn_mask_list.append(offer_attn_mask)
