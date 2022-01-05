@@ -76,7 +76,7 @@ def batch_neg_pair(ds, total_batch_size, inp_batch=4):
 
 def create_normal_mlm_dataset(
     ds, batch_size, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
-    MSK_id=50003, mask_prob=0.15, rand_token_size=50000, add_cate_porb=0.1, add_mlm_token=True
+    MSK_id=50003, mask_prob=0.15, rand_token_size=50000, add_cate_prob=1., add_mlm_token=True
 ):
     def _remove_non_use_tensor(example):
         del example["cate_l1"]
@@ -84,7 +84,7 @@ def create_normal_mlm_dataset(
         return example
     ds = preprocess_token(ds, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id, SEP_id=SEP_id,
                           PAD_id=PAD_id, MSK_id=MSK_id, mask_prob=mask_prob,
-                          rand_token_size=rand_token_size, add_cate_porb=add_cate_porb,
+                          rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
                           add_mlm_token=add_mlm_token)
     ds = (
         ds

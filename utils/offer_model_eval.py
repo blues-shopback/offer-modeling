@@ -1,24 +1,9 @@
 import tensorflow as tf
 
 
-def encode_and_combine(encoder, title, desc,
-                       inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
-                       cate_list=None):
-
-    title_enc = encoder.encode(title)
-    desc_enc = encoder.encode(desc)
-
-    if title_enc is None:
-        title_enc = []
-    if desc_enc is None:
-        desc_enc = []
-
-    if cate_list is not None:
-        cate_enc = []
-        for cate in cate_list:
-            _cate_enc = encoder.encode(cate)
-            if _cate_enc:
-                cate_enc += _cate_enc
+def combine_input(title_enc, desc_enc, inp_len=256, BOS_id=50000, EOS_id=50001,
+                  SEP_id=50002, PAD_id=50001, cate_enc=None):
+    if cate_enc is not None:
         combined = [BOS_id] + title_enc + [SEP_id] + cate_enc + [SEP_id] + desc_enc + [EOS_id]
         combined = combined[:inp_len]
 
@@ -40,7 +25,7 @@ def encode_and_combine(encoder, title, desc,
     if len(combined) < inp_len:
         pad_len = inp_len - len(combined)
         combined_pad = combined + [PAD_id] * pad_len
-        if cate_list is None:
+        if cate_enc is None:
             cate_pad_id = 2
         else:
             cate_pad_id = 3
@@ -50,6 +35,35 @@ def encode_and_combine(encoder, title, desc,
         combined_pad = combined
         cate_pos_token_pad = cate_pos_token
         attn_mask = [0] * len(combined)
+
+    return combined_pad, cate_pos_token_pad, attn_mask
+
+
+def encode_and_combine(encoder, title, desc,
+                       inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
+                       cate_list=None):
+
+    title_enc = encoder.encode(title)
+    desc_enc = encoder.encode(desc)
+
+    if title_enc is None:
+        title_enc = []
+    if desc_enc is None:
+        desc_enc = []
+
+    if cate_list is not None:
+        cate_enc = []
+        for cate in cate_list:
+            _cate_enc = encoder.encode(cate)
+            if _cate_enc:
+                cate_enc += _cate_enc
+    else:
+        cate_enc = None
+
+    combined_pad, cate_pos_token_pad, attn_mask = combine_input(
+        title_enc, desc_enc, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id,
+        SEP_id=SEP_id, PAD_id=PAD_id, cate_enc=cate_enc
+    )
 
     return combined_pad, cate_pos_token_pad, attn_mask
 
