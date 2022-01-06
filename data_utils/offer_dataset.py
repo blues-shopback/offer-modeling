@@ -75,21 +75,45 @@ def batch_neg_pair(ds, total_batch_size, inp_batch=4):
 
 
 def create_normal_mlm_dataset(
-    ds, batch_size, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
-    MSK_id=50003, mask_prob=0.15, rand_token_size=50000, add_cate_prob=1., add_mlm_token=True
+    ds_list, batch_size, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
+    MSK_id=50003, mask_prob=0.15, rand_token_size=50000, add_cate_prob=1., add_mlm_token=True,
 ):
+    def _process_ds(ds):
+        ds = preprocess_token(ds, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id, SEP_id=SEP_id,
+                              PAD_id=PAD_id, MSK_id=MSK_id, mask_prob=mask_prob,
+                              rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
+                              add_mlm_token=add_mlm_token)
+        ds2 = ds.shuffle(batch_size*16)
+        return ds2
+
     def _remove_non_use_tensor(example):
         del example["cate_l1"]
         del example["cate_l2"]
         return example
-    ds = preprocess_token(ds, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id, SEP_id=SEP_id,
-                          PAD_id=PAD_id, MSK_id=MSK_id, mask_prob=mask_prob,
-                          rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
-                          add_mlm_token=add_mlm_token)
+
+    def _explode_zip(*example):
+        keys = list(example[0].keys())
+        combined_example = {}
+        for key in keys:
+            v = []
+            for exa in example:
+                v.append(exa[key])
+            batch_v = tf.concat(v, axis=0)
+            combined_example[key] = batch_v
+
+        return combined_example
+
+    num_ds = len(ds_list)
+    proced_ds = tuple([_process_ds(ds) for ds in ds_list])
+    zip_ds = tf.data.Dataset.zip(proced_ds)
+
+    batch_zip_ds = zip_ds.batch(batch_size // num_ds)
+
     ds = (
-        ds
+        batch_zip_ds
+        .map(_explode_zip)
         .map(_remove_non_use_tensor)
-        .batch(batch_size)
+        .prefetch(batch_size * 16)
     )
 
     return ds
