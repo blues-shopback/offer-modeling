@@ -1,21 +1,17 @@
 import os
-import csv
 import json
 import time
 import random
 import argparse
-import functools
 
 import numpy as np
 import tensorflow as tf
 
 from utils.logging_conf import get_logger
-from utils.encoder import get_encoder
-from utils.offer_model_eval import eval_query, eval_pairs, encode_and_combine
 
-from data_utils.offer_dataset import create_neg_pair_dataset_v2
+from data_utils.offer_dataset import create_normal_mlm_dataset
 
-from models.train_utils import CustomSchedule, AdamWeightDecay, CustomWeightSchedule
+from models.train_utils import CustomSchedule, AdamWeightDecay
 from models.transformer import offer_model
 from models.config_utils import BertConfig
 
@@ -24,109 +20,40 @@ encoder = None
 enc_fn = None
 
 
-def eval_step(logger, model, args):
-    global encoder, enc_fn
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    if encoder is None:
-        bpe_path = os.path.join(dir_path, "resources", "bpe", "bpe_merge.txt")
-        encoder = get_encoder(bpe_path, 50000)
-    if enc_fn is None:
-        enc_fn = functools.partial(
-            encode_and_combine,
-            encoder=encoder,
-            inp_len=args.max_seq_len,
-            BOS_id=50000,
-            EOS_id=50001,
-            SEP_id=50002,
-            PAD_id=50001
-        )
-    # Start eval pairs
-    logger.info("Eval pairs")
-    pair_file_path = os.path.join(
-        dir_path,
-        "resources",
-        "offer_model_eval_data",
-        "pair20211104.csv")
-
-    pairs = []
-    with open(pair_file_path, "r") as f:
-        reader = csv.DictReader(f)
-        for d in reader:
-            pairs.append(d)
-
-    pair_result_str = eval_pairs(model, enc_fn, pairs)
-
-    logger.info(pair_result_str)
-
-    # Start eval query
-    logger.info("Eval query")
-    query_file_path = os.path.join(
-        dir_path,
-        "resources",
-        "offer_model_eval_data",
-        "eval_query_iphone_12.csv")
-    offers = []
-    with open(query_file_path, "r") as f:
-        reader = csv.DictReader(f)
-        for d in reader:
-            offers.append(d)
-    query = "iPhone 12"
-    query_result_str = eval_query(model, enc_fn, query, offers)
-    logger.info(query_result_str)
-
-
-def train_step(model, opt, example, global_step, mlm_weight_schedule, temperature):
+def train_step(model, opt, example, global_step):
     combined_padded = example["combined_padded"]
     masked_inp_padded = example["masked_inp_padded"]
     mlm_pos_padded = example["mlm_pos_padded"]
     cate_pos_padded = example["cate_pos_padded"]
     attn_mask = example["attn_mask"]
-    pos_pair_idx = example["pos_pair_idx"]
-    cate_target = example["l1_hash"]
-
-    # squeeze for extra rank
-    combined_padded = tf.squeeze(combined_padded, axis=0)
-    masked_inp_padded = tf.squeeze(masked_inp_padded, axis=0)
-    mlm_pos_padded = tf.squeeze(mlm_pos_padded, axis=0)
-    cate_pos_padded = tf.squeeze(cate_pos_padded, axis=0)
-    attn_mask = tf.squeeze(attn_mask, axis=0)
-    pos_pair_idx = tf.squeeze(pos_pair_idx, axis=0)
-    cate_target = tf.squeeze(cate_target, axis=0)
 
     masked_target = combined_padded * mlm_pos_padded
 
     with tf.GradientTape() as tape:
         pooled, output = model(masked_inp_padded, cate_pos_padded, attn_mask)
         batch_mlm_loss = model.get_mlm_loss(output, masked_target)
-        batch_contrastive_loss = model.get_contrastive_loss(pooled, pos_pair_idx, temp=temperature)
-        batch_category_loss = model.get_cate_loss(cate_target)
         mlm_loss = tf.reduce_mean(batch_mlm_loss)
-        contrastive_loss = tf.reduce_mean(batch_contrastive_loss)
-        category_loss = tf.reduce_mean(batch_category_loss)
 
-        loss = mlm_weight_schedule(global_step) * mlm_loss + contrastive_loss + category_loss
+        loss = mlm_loss
 
     grad = tape.gradient(loss, model.trainable_variables)
     opt.apply_gradients(zip(grad, model.trainable_variables))
     gnorm = tf.constant(0., dtype=tf.float32)
 
-    return loss, gnorm, mlm_loss, contrastive_loss, category_loss
+    return loss, gnorm, mlm_loss
 
 
 @tf.function
-def distribute_train_step(strategy, model, opt, example, global_step, mlm_weight_schedule,
-                          temperature):
+def distribute_train_step(strategy, model, opt, example, global_step):
 
-    loss, gnorm, mlm_loss, contrastive_loss, category_loss = strategy.run(
-        train_step, args=(model, opt, example, global_step, mlm_weight_schedule, temperature)
+    loss, gnorm, mlm_loss = strategy.run(
+        train_step, args=(model, opt, example, global_step)
     )
     loss = strategy.reduce("mean", loss, axis=None)
     gnorm = strategy.reduce("mean", gnorm, axis=None)
     mlm_loss = strategy.reduce("mean", mlm_loss, axis=None)
-    contrastive_loss = strategy.reduce("mean", contrastive_loss, axis=None)
-    category_loss = strategy.reduce("mean", category_loss, axis=None)
 
-    return loss, gnorm, mlm_loss, contrastive_loss, category_loss
+    return loss, gnorm, mlm_loss
 
 
 def create_dist_dataset(file_list, strategy, args):
@@ -151,7 +78,7 @@ def create_dist_dataset(file_list, strategy, args):
         dataset = tf.data.TFRecordDataset(ran_file_list)
         ds_list.append(dataset)
 
-    processed_dataset = create_neg_pair_dataset_v2(
+    processed_dataset = create_normal_mlm_dataset(
         ds_list,
         batch_size=args.batch_size,
         inp_len=args.max_seq_len,
@@ -166,13 +93,11 @@ def create_dist_dataset(file_list, strategy, args):
     )
 
     # distribute dataset
-    batch_ds = processed_dataset.batch(strategy.num_replicas_in_sync)
-
     options = tf.data.Options()
     options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
-    batch_ds = batch_ds.with_options(options)
+    processed_dataset = processed_dataset.with_options(options)
 
-    dist_batch_ds = strategy.experimental_distribute_dataset(batch_ds)
+    dist_batch_ds = strategy.experimental_distribute_dataset(processed_dataset)
 
     return dist_batch_ds
 
@@ -207,16 +132,11 @@ def train(args, logger):
         config.to_json(config_json_path)
         initializer = tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.02)
         model = offer_model.OfferModel(
-            config, initializer, is_training=True, cate_size=args.num_cate)
+            config, initializer, is_training=True, add_pooler=False)
         _global_step = tf.Variable(0, name="global_step", dtype=tf.int64)
         learning_rate_schedule = CustomSchedule(
             args.learning_rate, args.min_lr_ratio, args.train_steps, args.warmup_steps)
 
-        mlm_weight_schedule = CustomWeightSchedule(
-            start_value=args.mlm_loss_weight_start,
-            min_value=args.mlm_loss_weight_min,
-            min_steps=args.mlm_loss_weight_min_step
-        )
         # Optimizer
         if args.clip <= 0:
             clip = None
@@ -254,16 +174,12 @@ def train(args, logger):
 
     _loss = 0.
     _mlm_loss = 0.
-    _contrastive_loss = 0.
-    _category_loss = 0.
     _gnorm = 0.
     prev_step = 0
 
     log_str_format = ("Epoch: {:>3} Step: {:>8} | gnorm {:>4.2f} lr {:>9.3e} "
                       "| loss {:>5.3f} "
                       "| mlm_loss {:>5.3f} "
-                      "| contrast_loss {:>5.3f} "
-                      "| category_loss {:>5.3f} "
                       "    "
                       )
     # log_eval_format = ("\nEval loss: {:>5.3f}\n"
@@ -288,9 +204,9 @@ def train(args, logger):
 
                 def _init_model_vars(exam, model):
                     model(
-                        tf.squeeze(exam["masked_inp_padded"], axis=0),
-                        tf.squeeze(exam["cate_pos_padded"], axis=0),
-                        tf.squeeze(exam["attn_mask"], axis=0)
+                        exam["masked_inp_padded"],
+                        exam["cate_pos_padded"],
+                        exam["attn_mask"]
                     )
 
                 strategy.run(_init_model_vars, args=(exam, model))
@@ -304,69 +220,52 @@ def train(args, logger):
         for example in dist_batch_ds:
             _global_step.assign_add(1)
             global_step = strategy.reduce("mean", _global_step, axis=None)
-            loss, gnorm, mlm_loss, contrastive_loss, category_loss = distribute_train_step(
-                strategy, model, optimizer, example, _global_step, mlm_weight_schedule,
-                args.temperature)
+            loss, gnorm, mlm_loss = distribute_train_step(
+                strategy, model, optimizer, example, _global_step)
 
             tf.summary.scalar('learning rate', data=optimizer.lr(global_step), step=global_step)
-            tf.summary.scalar('mlm loss weight', data=mlm_weight_schedule(global_step),
-                              step=global_step)
             tf.summary.scalar('mlm_loss', data=mlm_loss, step=global_step)
-            tf.summary.scalar('contrastive_loss', data=contrastive_loss, step=global_step)
-            tf.summary.scalar('category_loss', data=category_loss, step=global_step)
             tf.summary.scalar('loss', data=loss, step=global_step)
             tf.summary.scalar('gnorm', data=gnorm, step=global_step)
 
             print(log_str_format.format(
                 int(mean_epoch), int(global_step), gnorm, float(optimizer.lr(global_step)),
-                loss, mlm_loss, contrastive_loss, category_loss),
+                loss, mlm_loss),
                 end="\r")
 
             _loss += loss
             _mlm_loss += mlm_loss
-            _contrastive_loss += contrastive_loss
-            _category_loss += category_loss
             _gnorm += gnorm
 
-            if int(global_step) > 0 and int(global_step) % args.eval_steps == 0:
-                eval_step(logger, model, args)
+            # if int(global_step) > 0 and int(global_step) % args.eval_steps == 0:
+            #     eval_step(logger, model, args)
 
             if int(global_step) > 0 and int(global_step) % args.save_steps == 0:
                 save_path = manager.save()
                 logger.info("Save checkpoint to: {}".format(save_path))
                 avg_loss = _loss / (int(global_step) - prev_step)
                 avg_mlm_loss = _mlm_loss / (int(global_step) - prev_step)
-                avg_contract_loss = _contrastive_loss / (int(global_step) - prev_step)
-                avg_category_loss = _category_loss / (int(global_step) - prev_step)
                 avg_gnorm = _gnorm / (int(global_step) - prev_step)
                 log_str = log_str_format.format(
                     int(mean_epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
                     avg_loss,
                     avg_mlm_loss,
-                    avg_contract_loss,
-                    avg_category_loss
                 )
                 logger.info(log_str)
 
             if int(global_step) > 0 and int(global_step) % args.print_status == 0:
                 avg_loss = _loss / (int(global_step) - prev_step)
                 avg_mlm_loss = _mlm_loss / (int(global_step) - prev_step)
-                avg_contract_loss = _contrastive_loss / (int(global_step) - prev_step)
-                avg_category_loss = _category_loss / (int(global_step) - prev_step)
                 avg_gnorm = _gnorm / (int(global_step) - prev_step)
                 log_str = log_str_format.format(
                     int(mean_epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
                     avg_loss,
                     avg_mlm_loss,
-                    avg_contract_loss,
-                    avg_category_loss
                 )
                 logger.info(log_str)
                 _loss = 0.
                 _gnorm = 0.
                 _mlm_loss = 0.
-                _contrastive_loss = 0.
-                _category_loss = 0.
                 prev_step = int(global_step)
 
             if int(global_step) > args.train_steps:
@@ -377,9 +276,7 @@ def train(args, logger):
                 log_str = log_str_format.format(
                     int(mean_epoch), int(global_step), avg_gnorm, float(optimizer.lr(global_step)),
                     avg_loss,
-                    avg_mlm_loss,
-                    avg_contract_loss,
-                    avg_category_loss
+                    avg_mlm_loss
                 )
                 logger.info(log_str)
                 logger.info("Finished training.")
@@ -402,8 +299,6 @@ if __name__ == "__main__":
     # parser.add_argument('--eval_data_path', type=str,
     #                     default="/glusterfs/blues/rerank/dataset_20200924/valid_4M.txt",
     #                     help="eval data path.")
-    parser.add_argument('--eval_steps', type=int, default=5000, help="Steps eval data each.")
-    # parser.add_argument('--eval_num', type=int, default=100, help="Number of data to eval.")
     parser.add_argument('--batch_size', type=int, default=256,
                         help="Model training batch size.")
     parser.add_argument('--max_seq_len', type=int, default=80,
@@ -413,16 +308,13 @@ if __name__ == "__main__":
     parser.add_argument('--train_steps', type=int, default=500000,
                         help="Steps to stop training.")
     parser.add_argument('--gpu', type=str, default="0", help="Gpu to use. ex: 0,1")
-    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--learning_rate', type=float, default=2e-4)
     parser.add_argument('--temperature', type=float, default=1.0)
-    parser.add_argument('--mlm_loss_weight_start', type=float, default=2.0)
-    parser.add_argument('--mlm_loss_weight_min', type=float, default=0.1)
-    parser.add_argument('--mlm_loss_weight_min_step', type=int, default=1000000)
     parser.add_argument('--adam_b1', type=float, default=0.9)
-    parser.add_argument('--adam_b2', type=float, default=0.999)
-    parser.add_argument('--adam_esp', type=float, default=1e-7)
-    parser.add_argument('--warmup_steps', type=int, default=5000)
-    parser.add_argument('--min_lr_ratio', type=float, default=0.001)
+    parser.add_argument('--adam_b2', type=float, default=0.99)
+    parser.add_argument('--adam_esp', type=float, default=1e-6)
+    parser.add_argument('--warmup_steps', type=int, default=10000)
+    parser.add_argument('--min_lr_ratio', type=float, default=0.01)
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--clip', type=float, default=0., help="Global norm clip value.")
@@ -432,9 +324,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true', help="Debug mode.")
     parser.add_argument('--num_dataset', type=int, default=64,
                         help="number of file to load to form batch.")
-    parser.add_argument('--num_cate', type=int, default=1569,
-                        help="number of category for classified task.")
-    parser.add_argument('--add_cate_prob', type=float, default=0.1,
+    parser.add_argument('--add_cate_prob', type=float, default=1.0,
                         help="probibilty for adding category text in input.")
 
     args = parser.parse_args()

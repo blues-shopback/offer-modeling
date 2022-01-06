@@ -5,10 +5,11 @@ from models.transformer import modules, base_bert
 
 class OfferModel(tf.Module):
     def __init__(self, config, initializer=None, name="offer_model", dtype=tf.float32,
-                 cate_size=None, is_training=True):
+                 cate_size=None, is_training=True, add_pooler=True):
         super().__init__(name=name)
         self.config = config
         self.cate_size = cate_size
+        self.add_pooler = add_pooler
         if initializer is None:
             self.initializer = tf.keras.initializers.TruncatedNormal(
                 mean=0.0, stddev=0.02, seed=None)
@@ -69,20 +70,20 @@ class OfferModel(tf.Module):
             self.encoder = base_bert.BaseModel(
                 config, self.initializer, name="bert_encoder", dtype=self.dtype,
                 is_training=self.is_training)
-
-            self.pooler = modules.SummarizeSequence(
-                summary_type="attn",
-                d_model=config.d_model,
-                n_head=config.n_head,
-                d_head=config.d_head,
-                dropout=config.dropout,
-                dropatt=config.dropatt,
-                initializer=self.initializer,
-                is_training=self.is_training,
-                name="attn_pooler",
-                dtype=self.dtype,
-                use_proj=self.is_training
-            )
+            if self.add_pooler:
+                self.pooler = modules.SummarizeSequence(
+                    summary_type="attn",
+                    d_model=config.d_model,
+                    n_head=config.n_head,
+                    d_head=config.d_head,
+                    dropout=config.dropout,
+                    dropatt=config.dropatt,
+                    initializer=self.initializer,
+                    is_training=self.is_training,
+                    name="attn_pooler",
+                    dtype=self.dtype,
+                    use_proj=self.is_training
+                )
             if self.cate_size is not None:
                 self.cate_pooler = modules.SummarizeSequence(
                     summary_type="attn",
@@ -107,7 +108,11 @@ class OfferModel(tf.Module):
                 )
 
         output = self.encoder(inp, pos_cate, inp_mask)
-        pooled = self.pooler(output, inp_mask)
+
+        if self.add_pooler:
+            pooled = self.pooler(output, inp_mask)
+        else:
+            pooled = None
 
         if self.cate_size is not None:
             self.pooled_cate = self.cate_pooler(output, inp_mask)
