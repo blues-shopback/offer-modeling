@@ -182,7 +182,7 @@ class Encoder:
         return text
 
 
-def get_encoder(bpe_path, merge_num, char_path=None):
+def get_encoder(bpe_path, merge_num=50000, char_path=None):
     encoder = {}
     if char_path:
         char_encoder = char_to_id(char_path, pre_define_token)
