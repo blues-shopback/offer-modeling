@@ -6,8 +6,8 @@ import tensorflow as tf
 
 def _parse_function(example_proto):
     feature_description = {
-        'cate_l1': tf.io.FixedLenFeature([], tf.string),
-        'cate_l2': tf.io.FixedLenFeature([], tf.string),
+        'cate_l1': tf.io.FixedLenFeature([], tf.string, default_value=""),
+        'cate_l2': tf.io.FixedLenFeature([], tf.string, default_value=""),
         'title_enc': tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
         'x_desc1_enc': tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
         'x_cate1_enc': tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
