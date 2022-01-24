@@ -43,7 +43,7 @@ def _explode_batch_and_shift_pair_idx(example):
     example["mlm_pos_padded"] = _reshape(example["mlm_pos_padded"])
     example["attn_mask"] = _reshape(example["attn_mask"])
     example["cate_id"] = _reshape(example["cate_id"])
-    # example["pair_labels"] = tf.reshape(example["pair_labels"], [-1, 1])
+    example["cate_id"] = tf.reshape(example["cate_id"], [-1])
 
     pair_idx = example["pos_pair_idx"]
 
@@ -74,52 +74,7 @@ def batch_neg_pair(ds, total_batch_size, inp_batch=4):
     return ds
 
 
-def create_normal_mlm_dataset(
-    ds_list, batch_size, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, PAD_id=50001,
-    MSK_id=50003, mask_prob=0.15, rand_token_size=50000, add_cate_prob=1., add_mlm_token=True,
-):
-    def _process_ds(ds):
-        ds = preprocess_token(ds, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id, SEP_id=SEP_id,
-                              PAD_id=PAD_id, MSK_id=MSK_id, mask_prob=mask_prob,
-                              rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
-                              add_mlm_token=add_mlm_token)
-        ds2 = ds.shuffle(batch_size*16)
-        return ds2
-
-    def _remove_non_use_tensor(example):
-        del example["cate_l1"]
-        del example["cate_l2"]
-        return example
-
-    def _explode_zip(*example):
-        keys = list(example[0].keys())
-        combined_example = {}
-        for key in keys:
-            v = []
-            for exa in example:
-                v.append(exa[key])
-            batch_v = tf.concat(v, axis=0)
-            combined_example[key] = batch_v
-
-        return combined_example
-
-    num_ds = len(ds_list)
-    proced_ds = tuple([_process_ds(ds) for ds in ds_list])
-    zip_ds = tf.data.Dataset.zip(proced_ds)
-
-    batch_zip_ds = zip_ds.batch(batch_size // num_ds)
-
-    ds = (
-        batch_zip_ds
-        .map(_explode_zip)
-        .map(_remove_non_use_tensor)
-        .prefetch(batch_size * 16)
-    )
-
-    return ds
-
-
-def create_neg_pair_dataset_v2(
+def create_neg_pair_dataset(
     ds_list, no_cate_ds, batch_size, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002,
     PAD_id=50001, MSK_id=50003, mask_prob=0.15, rand_token_size=50000, add_cate_prob=0.1,
     add_mlm_token=True, prefetch=256
@@ -140,6 +95,13 @@ def create_neg_pair_dataset_v2(
     def _remove_non_use_tensor(example):
         del example["cate_l1"]
         del example["cate_l2"]
+        del example["l1_hash"]
+
+        return example
+
+    def _remove_non_use_tensor_v2(example):
+        del example["cate_l1"]
+        del example["cate_l2"]
 
         return example
 
@@ -156,7 +118,7 @@ def create_neg_pair_dataset_v2(
         return combined_example
 
     def _explode_zip_v2(pair_exam, no_pair_exam):
-        keys = list(pair_exam[0].keys())
+        keys = list(pair_exam.keys())
         combined_example = {}
         for key in keys:
             v = []
@@ -180,7 +142,7 @@ def create_neg_pair_dataset_v2(
         ds2 = ds.map(_hash_cate_l1)
         ds3 = ds2.shuffle(batch_size*32)
         ds4 = ds3.group_by_window(lambda x: x["l1_hash"],
-                                  lambda key, ds: ds.batch(2), window_size=2)
+                                  lambda key, ds: ds.batch(2, drop_remainder=True), window_size=2)
         ds5 = ds4.filter(_check_catel2_equal)
         # bsz: 4
         ds6 = ds5.map(_add_pos_pair_and_label).map(_remove_non_use_tensor)
@@ -193,22 +155,22 @@ def create_neg_pair_dataset_v2(
                               add_mlm_token=add_mlm_token)
 
         ds2 = ds.shuffle(batch_size*32)
-        ds3 = ds2.map(_remove_non_use_tensor)
+        ds3 = ds2.map(_remove_non_use_tensor_v2)
         # bsz: 4
-        ds4 = ds3.batch(4)
+        ds4 = ds3.batch(4, drop_remainder=True)
         return ds4
 
     num_ds = len(ds_list)
     proced_ds = tuple([_process_ds(ds) for ds in ds_list])
     no_cate_proced_ds = _process_no_cate_ds(no_cate_ds)
-    no_cate_proced_ds = no_cate_proced_ds.batch(4)
 
     zip_ds = tf.data.Dataset.zip(tuple(proced_ds))
     zip_batch_ds = zip_ds.map(_explode_zip)
     pre_batch = num_ds * 4
-    ds7 = batch_neg_pair(zip_batch_ds, batch_size, inp_batch=pre_batch)
+    # batch_size-4 4 for no_cate_proced_ds
+    ds7 = batch_neg_pair(zip_batch_ds, batch_size-4, inp_batch=pre_batch)
 
-    zip_ds2 = tf.data.Dataset.zip(tuple(ds7, no_cate_proced_ds))
+    zip_ds2 = tf.data.Dataset.zip(tuple([ds7, no_cate_proced_ds]))
     zip_batch_ds2 = zip_ds2.map(_explode_zip_v2)
 
     ds8 = zip_batch_ds2.prefetch(prefetch)
