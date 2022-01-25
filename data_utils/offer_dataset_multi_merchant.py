@@ -14,6 +14,7 @@ def _add_pos_pair_and_label(example):
     example["mlm_pos_padded"] = _duplicate_first(example["mlm_pos_padded"])
     example["attn_mask"] = _duplicate_first(example["attn_mask"])
     example["cate_id"] = _duplicate_first(example["cate_id"])
+    example["cate_l1_id"] = _duplicate_first(example["cate_l1_id"])
 
     positive_pair1 = tf.constant([0, 2], dtype=tf.int32)
     positive_pair2 = tf.constant([1, 3], dtype=tf.int32)
@@ -42,8 +43,8 @@ def _explode_batch_and_shift_pair_idx(example):
     example["cate_pos_padded"] = _reshape(example["cate_pos_padded"])
     example["mlm_pos_padded"] = _reshape(example["mlm_pos_padded"])
     example["attn_mask"] = _reshape(example["attn_mask"])
-    example["cate_id"] = _reshape(example["cate_id"])
     example["cate_id"] = tf.reshape(example["cate_id"], [-1])
+    example["cate_l1_id"] = tf.reshape(example["cate_l1_id"], [-1])
 
     pair_idx = example["pos_pair_idx"]
 
@@ -95,13 +96,6 @@ def create_neg_pair_dataset(
     def _remove_non_use_tensor(example):
         del example["cate_l1"]
         del example["cate_l2"]
-        del example["l1_hash"]
-
-        return example
-
-    def _remove_non_use_tensor_v2(example):
-        del example["cate_l1"]
-        del example["cate_l2"]
 
         return example
 
@@ -139,9 +133,9 @@ def create_neg_pair_dataset(
                               rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
                               add_mlm_token=add_mlm_token)
 
-        ds2 = ds.map(_hash_cate_l1)
-        ds3 = ds2.shuffle(batch_size*32)
-        ds4 = ds3.group_by_window(lambda x: x["l1_hash"],
+        # ds2 = ds.map(_hash_cate_l1)
+        ds3 = ds.shuffle(batch_size*32)
+        ds4 = ds3.group_by_window(lambda x: x["cate_l1_id"],
                                   lambda key, ds: ds.batch(2, drop_remainder=True), window_size=2)
         ds5 = ds4.filter(_check_catel2_equal)
         # bsz: 4
@@ -155,7 +149,7 @@ def create_neg_pair_dataset(
                               add_mlm_token=add_mlm_token)
 
         ds2 = ds.shuffle(batch_size*32)
-        ds3 = ds2.map(_remove_non_use_tensor_v2)
+        ds3 = ds2.map(_remove_non_use_tensor)
         # bsz: 4
         ds4 = ds3.batch(4, drop_remainder=True)
         return ds4
