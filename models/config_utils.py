@@ -30,6 +30,22 @@ class BaseConfig:
         elif data_dict is not None:
             self.init_from_data(data_dict)
 
+    @classmethod
+    def generate_template(cls, path):
+        keys = cls.get_keys()
+        data = {}
+        for key in keys:
+            data[key] = None
+
+        dir = os.path.dirname(path)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        with open(path, "w") as f:
+            json.dump(data, f, indent=4, sort_keys=True)
+
+        return data
+
     @staticmethod
     def get_keys():
         raise NotImplementedError
@@ -63,6 +79,14 @@ class BaseConfig:
             json_data[key] = getattr(self, key)
 
         return pformat(json_data)
+
+
+class OfferDatasetConfig(BaseConfig):
+    @staticmethod
+    def get_keys():
+        return ["amazon_cate_path", "amazon_wo_cate_path", "amazon_cate_size",
+                "catch_cate_path", "catch_cate_size",
+                "mydeal_cate_path", "mydeal_wo_cate_path", "mydeal_cate_size"]
 
 
 class BertConfig(BaseConfig):

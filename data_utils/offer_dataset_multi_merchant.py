@@ -136,30 +136,29 @@ def create_neg_pair_dataset(
         ds6 = ds5.map(_add_pos_pair_and_label).map(_remove_non_use_tensor)
         return ds6
 
-    def _process_no_cate_ds(ds):
+    def _process_no_cate_ds(ds, bsz):
         ds = preprocess_token(ds, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id, SEP_id=SEP_id,
                               PAD_id=PAD_id, MSK_id=MSK_id, mask_prob=mask_prob,
                               rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
                               add_mlm_token=add_mlm_token)
 
-        ds2 = ds.shuffle(batch_size*32)
-        ds3 = ds2.map(_remove_non_use_tensor)
-        # bsz: 4
-        ds4 = ds3.batch(4, drop_remainder=True)
-        return ds4
+        # ds2 = ds.filter(_filter_cate_length)
+        ds3 = ds.shuffle(batch_size*32)
+        ds4 = ds3.map(_remove_non_use_tensor)
+        ds5 = ds4.batch(bsz, drop_remainder=True)
+        return ds5
 
     num_ds = len(ds_list)
     proced_ds = tuple([_process_ds(ds) for ds in ds_list])
-    if no_cate_ds is not None:
-        no_cate_proced_ds = _process_no_cate_ds(no_cate_ds)
-
     zip_ds = tf.data.Dataset.zip(tuple(proced_ds))
     zip_batch_ds = zip_ds.map(_explode_zip)
     pre_batch = num_ds * 4
     if no_cate_ds is not None:
+        left_batch = batch_size % pre_batch
         # batch_size-4 4 for no_cate_proced_ds
-        ds7 = batch_neg_pair(zip_batch_ds, batch_size-4, inp_batch=pre_batch)
+        ds7 = batch_neg_pair(zip_batch_ds, batch_size - left_batch, inp_batch=pre_batch)
 
+        no_cate_proced_ds = _process_no_cate_ds(no_cate_ds, left_batch)
         zip_ds2 = tf.data.Dataset.zip(tuple([ds7, no_cate_proced_ds]))
         zip_batch_ds2 = zip_ds2.map(_explode_zip_v2)
     else:
