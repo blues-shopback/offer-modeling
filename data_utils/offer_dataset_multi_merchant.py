@@ -81,11 +81,6 @@ def create_neg_pair_dataset(
     add_mlm_token=True, prefetch=256
 ):
 
-    def _hash_cate_l1(example, num_buckets=1569):
-        cate_l1 = tf.strings.to_hash_bucket(example["cate_l1"], num_buckets=num_buckets)
-        example["l1_hash"] = cate_l1
-        return example
-
     def _check_catel2_equal(example):
         cate_l2 = example["cate_l2"]
         rev_l2 = tf.reverse(cate_l2, axis=[-1])
@@ -133,7 +128,6 @@ def create_neg_pair_dataset(
                               rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
                               add_mlm_token=add_mlm_token)
 
-        # ds2 = ds.map(_hash_cate_l1)
         ds3 = ds.shuffle(batch_size*32)
         ds4 = ds3.group_by_window(lambda x: x["cate_l1_id"],
                                   lambda key, ds: ds.batch(2, drop_remainder=True), window_size=2)
@@ -156,16 +150,20 @@ def create_neg_pair_dataset(
 
     num_ds = len(ds_list)
     proced_ds = tuple([_process_ds(ds) for ds in ds_list])
-    no_cate_proced_ds = _process_no_cate_ds(no_cate_ds)
+    if no_cate_ds is not None:
+        no_cate_proced_ds = _process_no_cate_ds(no_cate_ds)
 
     zip_ds = tf.data.Dataset.zip(tuple(proced_ds))
     zip_batch_ds = zip_ds.map(_explode_zip)
     pre_batch = num_ds * 4
-    # batch_size-4 4 for no_cate_proced_ds
-    ds7 = batch_neg_pair(zip_batch_ds, batch_size-4, inp_batch=pre_batch)
+    if no_cate_ds is not None:
+        # batch_size-4 4 for no_cate_proced_ds
+        ds7 = batch_neg_pair(zip_batch_ds, batch_size-4, inp_batch=pre_batch)
 
-    zip_ds2 = tf.data.Dataset.zip(tuple([ds7, no_cate_proced_ds]))
-    zip_batch_ds2 = zip_ds2.map(_explode_zip_v2)
+        zip_ds2 = tf.data.Dataset.zip(tuple([ds7, no_cate_proced_ds]))
+        zip_batch_ds2 = zip_ds2.map(_explode_zip_v2)
+    else:
+        zip_batch_ds2 = ds7 = batch_neg_pair(zip_batch_ds, batch_size, inp_batch=pre_batch)
 
     ds8 = zip_batch_ds2.prefetch(prefetch)
 
