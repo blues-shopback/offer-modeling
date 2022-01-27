@@ -73,7 +73,6 @@ class OfferModel(tf.Module):
         assert self.built_cate, "Need to call 'build_classify_layer' before 'get_cate_loss'."
 
         mock_target = tf.zeros_like(target)
-        mock_mask_pos = tf.where(tf.math.greater_equal(mock_target, 0), 1., 0.)
 
         mask_pos = tf.where(tf.math.greater_equal(target, 0), 1., 0.)
         masked_target = tf.where(tf.math.greater_equal(target, 0), target, 0)
@@ -83,25 +82,24 @@ class OfferModel(tf.Module):
         for merc in self.merchant_classify_layey_map:
             pool_layer, cate_w, cate_b = self.merchant_classify_layey_map[merc]
 
-            pos_mask = tf.where(tf.equal(merchant, merc), mask_pos, mock_mask_pos)
-            m_target = tf.where(tf.equal(merchant, merc), masked_target, mock_target)
+            m_target = tf.cond(
+                tf.equal(merchant, merc), lambda: masked_target, lambda: mock_target)
 
             pooled = pool_layer(output, inp_mask)
-            # pool_masked = tf.gather_nd(pooled, pos_idx)
             logits = tf.einsum('bd,nd->bn', pooled, cate_w) + cate_b
 
             loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=m_target,
                 logits=logits)
 
-            mask_loss = loss * pos_mask
+            mask_loss = loss * mask_pos
 
             loss_sum = tf.reduce_sum(mask_loss)
-            loss_dom = tf.math.maximum(tf.reduce_sum(pos_mask), 1.)
+            loss_dom = tf.math.maximum(tf.reduce_sum(mask_pos), 1.)
             reduce_loss = loss_sum / loss_dom
 
             weighted_loss = reduce_loss * tf.where(
-                tf.equal(merchant, merc), 1., 1e-9)
+                tf.equal(merchant, merc), 1., 0.)
 
             losses += weighted_loss
 

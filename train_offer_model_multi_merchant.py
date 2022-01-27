@@ -288,7 +288,7 @@ def train(args, logger):
     model.build_classify_layer([
         ("amazon", dataset_config.amazon_cate_size),
         ("catch", dataset_config.catch_cate_size),
-        ("mydeal", dataset_config.mydeal_cate_size)
+        ("mydeal", 3000)
     ])
 
     # Check model parameters
@@ -326,7 +326,7 @@ def train(args, logger):
     logger.info("Training start.")
     while not finished:
         # Sample merchant to load data
-        merchant = random.choices(["amazon", "catch", "mydeal"], weights=[0., 0.1, 0.])[0]
+        merchant = random.choices(["amazon", "catch", "mydeal"], weights=[0.65, 0.2, 0.15])[0]
         merchant_step_counter[merchant] += 1
         try:
             example = next(dataset_it_map[merchant])
@@ -346,7 +346,7 @@ def train(args, logger):
 
             elif merchant == "mydeal":
                 mydeal_df = init_dataset(
-                    args, mydeal_cate_file_list, mydeal_wo_cate_file_list, prefetch=64)
+                    args, mydeal_cate_file_list, mydeal_wo_cate_file_list, prefetch=32)
                 del dataset_it_map[merchant]
                 dataset_it_map[merchant] = iter(mydeal_df)
                 epoch_mydeal.assign_add(1)
@@ -356,6 +356,13 @@ def train(args, logger):
         loss, mlm_loss, contrastive_loss, category_loss = train_step(
             model, optimizer, example, global_step, mlm_weight_schedule, args.temperature,
             merchant)
+
+        # if np.isnan(category_loss.numpy()):
+        #     import sys
+        #     np.set_printoptions(threshold=sys.maxsize)
+        #     print(tf.reduce_sum(example["attn_mask"], axis=1).numpy())
+        #     print(loss, mlm_loss, contrastive_loss, category_loss)
+        #     break
 
         merchant_loss[merchant] = category_loss
 
