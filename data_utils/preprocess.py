@@ -17,6 +17,11 @@ def _parse_function(example_proto):
     return tf.io.parse_single_example(example_proto, feature_description)
 
 
+def filter_combined_inp(example):
+    combined = example["combined"]
+    return tf.greater(tf.shape(combined)[0], 4)
+
+
 def get_combine_inp_fn(inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, add_cate_prob=0.1):
 
     def combine_inp(example_proto, inp_len, BOS_id, EOS_id, SEP_id, add_cate_prob):
@@ -193,6 +198,7 @@ def preprocess_token(ds, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, 
         ds
         .map(_parse_function)
         .map(combine_inp_fn)
+        .filter(filter_combined_inp)
     )
     if add_mlm_token:
         mlm_token_fn = get_mlm_token_fn(
