@@ -255,15 +255,16 @@ def train(args, logger):
         logger.info("Restore model checkpoint from: {}".format(args.init_checkpoint))
         ckpt.restore(args.init_checkpoint)
 
-    log_str_format = ("Epoch: ({:>2}, {:>2}, {:>2}) "
-                      "| Step: {:>8} "
-                      "| lr {:>9.3e} "
-                      "| loss {:>5.3f} "
+    log_str_format = ("Epoch:{:>2},{:>2},{:>2} "
+                      "| Step {:>7} "
+                      "| lr {:>8.2e} "
+                      "| loss {:>4.2f} "
                       "| mlm_loss {:>5.3f} "
-                      "| contrast_loss {:>5.3f} "
-                      "| amazon {:>5.3f} "
-                      "| catch {:>5.3f} "
-                      "| mydeal {:>5.3f} "
+                      "| cont_loss {:>5.3f} "
+                      "| amazon {:>5.2f} "
+                      "| catch {:>5.2f} "
+                      "| mydeal {:>5.2f} "
+                      "| time: {:>4.1f}s"
                       "    "
                       )
     # log_eval_format = ("\nEval loss: {:>5.3f}\n"
@@ -306,6 +307,8 @@ def train(args, logger):
     logger.info('#params: {}'.format(num_params))
 
     # Variable in loop
+    during_t = time.time()
+    _t = time.time()
     finished = False
     _loss = 0.
     _mlm_loss = 0.
@@ -372,7 +375,7 @@ def train(args, logger):
                           step=global_step)
         tf.summary.scalar('mlm_loss', data=mlm_loss, step=global_step)
         tf.summary.scalar('contrastive_loss', data=contrastive_loss, step=global_step)
-        tf.summary.scalar('category_loss', data=category_loss, step=global_step)
+        tf.summary.scalar('{}_cate_loss'.format(merchant), data=category_loss, step=global_step)
         tf.summary.scalar('loss', data=loss, step=global_step)
 
         # print to terminal
@@ -383,9 +386,12 @@ def train(args, logger):
             loss, mlm_loss, contrastive_loss,
             merchant_loss["amazon"],
             merchant_loss["catch"],
-            merchant_loss["mydeal"]),
+            merchant_loss["mydeal"],
+            time.time() - _t),
             end="\r")
 
+        # process data for each step
+        _t = time.time()
         _loss += loss
         _mlm_loss += mlm_loss
         _contrastive_loss += contrastive_loss
@@ -393,25 +399,26 @@ def train(args, logger):
 
         if int(global_step) > 0 and int(global_step) % args.save_steps == 0:
             save_path = manager.save()
+            print()
             logger.info("Save checkpoint to: {}".format(save_path))
-            avg_loss = _loss / (int(global_step) - prev_step)
-            avg_mlm_loss = _mlm_loss / (int(global_step) - prev_step)
-            avg_contract_loss = _contrastive_loss / (int(global_step) - prev_step)
-            avg_amazon_loss = _merchant_loss["amazon"] / merchant_step_counter["amazon"]
-            avg_catch_loss = _merchant_loss["catch"] / merchant_step_counter["catch"]
-            avg_mydeal_loss = _merchant_loss["mydeal"] / merchant_step_counter["mydeal"]
-            log_str = log_str_format.format(
-                int(epoch_amazon), int(epoch_catch), int(epoch_mydeal),
-                int(global_step),
-                float(optimizer.lr(global_step)),
-                avg_loss,
-                avg_mlm_loss,
-                avg_contract_loss,
-                avg_amazon_loss,
-                avg_catch_loss,
-                avg_mydeal_loss
-            )
-            logger.info(log_str)
+            # avg_loss = _loss / (int(global_step) - prev_step)
+            # avg_mlm_loss = _mlm_loss / (int(global_step) - prev_step)
+            # avg_contract_loss = _contrastive_loss / (int(global_step) - prev_step)
+            # avg_amazon_loss = _merchant_loss["amazon"] / merchant_step_counter["amazon"]
+            # avg_catch_loss = _merchant_loss["catch"] / merchant_step_counter["catch"]
+            # avg_mydeal_loss = _merchant_loss["mydeal"] / merchant_step_counter["mydeal"]
+            # log_str = log_str_format.format(
+            #     int(epoch_amazon), int(epoch_catch), int(epoch_mydeal),
+            #     int(global_step),
+            #     float(optimizer.lr(global_step)),
+            #     avg_loss,
+            #     avg_mlm_loss,
+            #     avg_contract_loss,
+            #     avg_amazon_loss,
+            #     avg_catch_loss,
+            #     avg_mydeal_loss
+            # )
+            # logger.info(log_str)
 
         if int(global_step) > 0 and int(global_step) % args.print_status == 0:
             avg_loss = _loss / (int(global_step) - prev_step)
@@ -429,9 +436,11 @@ def train(args, logger):
                 avg_contract_loss,
                 avg_amazon_loss,
                 avg_catch_loss,
-                avg_mydeal_loss
+                avg_mydeal_loss,
+                time.time() - during_t
             )
             logger.info(log_str)
+            during_t = time.time()
             _loss = 0.
             _mlm_loss = 0.
             _contrastive_loss = 0.
@@ -461,7 +470,8 @@ def train(args, logger):
                 avg_contract_loss,
                 avg_amazon_loss,
                 avg_catch_loss,
-                avg_mydeal_loss
+                avg_mydeal_loss,
+                time.time() - during_t
             )
             logger.info(log_str)
             logger.info("Finished training.")
@@ -488,29 +498,29 @@ if __name__ == "__main__":
                         help="Maximum sequence length.")
     parser.add_argument('--init_checkpoint', type=str, default=None,
                         help="Model checkpoint to init.")
-    parser.add_argument('--train_steps', type=int, default=500000,
+    parser.add_argument('--train_steps', type=int, default=1000000,
                         help="Steps to stop training.")
     parser.add_argument('--gpu', type=str, default="0", help="Gpu to use. ex: 0,1")
     parser.add_argument('--learning_rate', type=float, default=1e-4)
-    parser.add_argument('--temperature', type=float, default=1.0)
-    parser.add_argument('--mlm_loss_weight_start', type=float, default=2.0)
-    parser.add_argument('--mlm_loss_weight_min', type=float, default=0.1)
-    parser.add_argument('--mlm_loss_weight_min_step', type=int, default=1000000)
+    parser.add_argument('--temperature', type=float, default=0.05)
+    parser.add_argument('--mlm_loss_weight_start', type=float, default=1.5)
+    parser.add_argument('--mlm_loss_weight_min', type=float, default=0.2)
+    parser.add_argument('--mlm_loss_weight_min_step', type=int, default=500000)
     parser.add_argument('--adam_b1', type=float, default=0.9)
-    parser.add_argument('--adam_b2', type=float, default=0.999)
-    parser.add_argument('--adam_esp', type=float, default=1e-7)
+    parser.add_argument('--adam_b2', type=float, default=0.99)
+    parser.add_argument('--adam_esp', type=float, default=5e-7)
     parser.add_argument('--warmup_steps', type=int, default=5000)
-    parser.add_argument('--min_lr_ratio', type=float, default=0.001)
+    parser.add_argument('--min_lr_ratio', type=float, default=0.01)
     parser.add_argument('--dropout', type=float, default=0.1)
-    parser.add_argument('--weight_decay', type=float, default=0.01)
+    parser.add_argument('--weight_decay', type=float, default=0.009)
     parser.add_argument('--clip', type=float, default=0., help="Global norm clip value.")
     parser.add_argument('--print_status', type=int, default=1000, help="Steps to print status.")
-    parser.add_argument('--print_exp', type=int, default=1, help="Print example for debug.")
-    parser.add_argument('--save_steps', type=int, default=5000, help="Steps to save model.")
+    # parser.add_argument('--print_exp', type=int, default=1, help="Print example for debug.")
+    parser.add_argument('--save_steps', type=int, default=10000, help="Steps to save model.")
     parser.add_argument('--debug', action='store_true', help="Debug mode.")
     parser.add_argument('--num_dataset', type=int, default=64,
                         help="number of file to load to form batch.")
-    parser.add_argument('--add_cate_prob', type=float, default=0.1,
+    parser.add_argument('--add_cate_prob', type=float, default=0.2,
                         help="probibilty for adding category text in input.")
 
     args = parser.parse_args()
