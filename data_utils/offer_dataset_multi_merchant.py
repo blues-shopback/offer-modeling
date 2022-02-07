@@ -45,6 +45,10 @@ def _explode_batch_and_shift_pair_idx(example):
     example["attn_mask"] = _reshape(example["attn_mask"])
     example["cate_id"] = tf.reshape(example["cate_id"], [-1])
     example["cate_l1_id"] = tf.reshape(example["cate_l1_id"], [-1])
+    if "cate_l1" in example:
+        example["cate_l1"] = tf.reshape(example["cate_l1"], [-1])
+    if "cate_l2" in example:
+        example["cate_l2"] = tf.reshape(example["cate_l2"], [-1])
 
     pair_idx = example["pos_pair_idx"]
 
@@ -78,7 +82,7 @@ def batch_neg_pair(ds, total_batch_size, inp_batch=4):
 def create_neg_pair_dataset(
     ds_list, no_cate_ds, batch_size, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002,
     PAD_id=50001, MSK_id=50003, mask_prob=0.15, rand_token_size=50000, add_cate_prob=0.1,
-    add_mlm_token=True, prefetch=256
+    add_mlm_token=True, prefetch=256, remove_non_use=True
 ):
 
     def _check_catel2_equal(example):
@@ -122,7 +126,7 @@ def create_neg_pair_dataset(
 
         return combined_example
 
-    def _process_ds(ds):
+    def _process_ds(ds, remove_non_use):
         ds = preprocess_token(ds, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id, SEP_id=SEP_id,
                               PAD_id=PAD_id, MSK_id=MSK_id, mask_prob=mask_prob,
                               rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
@@ -133,10 +137,13 @@ def create_neg_pair_dataset(
                                   lambda key, ds: ds.batch(2, drop_remainder=True), window_size=2)
         ds5 = ds4.filter(_check_catel2_equal)
         # bsz: 4
-        ds6 = ds5.map(_add_pos_pair_and_label).map(_remove_non_use_tensor)
+        ds6 = ds5.map(_add_pos_pair_and_label)
+        if remove_non_use:
+            ds6 = ds6.map(_remove_non_use_tensor)
+
         return ds6
 
-    def _process_no_cate_ds(ds, bsz):
+    def _process_no_cate_ds(ds, bsz, remove_non_use):
         ds = preprocess_token(ds, inp_len=inp_len, BOS_id=BOS_id, EOS_id=EOS_id, SEP_id=SEP_id,
                               PAD_id=PAD_id, MSK_id=MSK_id, mask_prob=mask_prob,
                               rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
@@ -144,12 +151,13 @@ def create_neg_pair_dataset(
 
         # ds2 = ds.filter(_filter_cate_length)
         ds3 = ds.shuffle(batch_size*32)
-        ds4 = ds3.map(_remove_non_use_tensor)
-        ds5 = ds4.batch(bsz, drop_remainder=True)
-        return ds5
+        if remove_non_use:
+            ds3 = ds3.map(_remove_non_use_tensor)
+        ds4 = ds3.batch(bsz, drop_remainder=True)
+        return ds4
 
     num_ds = len(ds_list)
-    proced_ds = tuple([_process_ds(ds) for ds in ds_list])
+    proced_ds = tuple([_process_ds(ds, remove_non_use) for ds in ds_list])
     zip_ds = tf.data.Dataset.zip(tuple(proced_ds))
     zip_batch_ds = zip_ds.map(_explode_zip)
     pre_batch = num_ds * 4
@@ -158,7 +166,7 @@ def create_neg_pair_dataset(
         # batch_size-4 4 for no_cate_proced_ds
         ds7 = batch_neg_pair(zip_batch_ds, batch_size - left_batch, inp_batch=pre_batch)
 
-        no_cate_proced_ds = _process_no_cate_ds(no_cate_ds, left_batch)
+        no_cate_proced_ds = _process_no_cate_ds(no_cate_ds, left_batch, remove_non_use)
         zip_ds2 = tf.data.Dataset.zip(tuple([ds7, no_cate_proced_ds]))
         zip_batch_ds2 = zip_ds2.map(_explode_zip_v2)
     else:
