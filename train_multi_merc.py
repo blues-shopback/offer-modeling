@@ -329,7 +329,9 @@ def train(args, logger):
     logger.info("Training start.")
     while not finished:
         # Sample merchant to load data
-        merchant = random.choices(["amazon", "catch", "mydeal"], weights=[0.65, 0.2, 0.15])[0]
+        merchant = random.choices(
+            ["amazon", "catch", "mydeal"],
+            weights=[args.amazon_ds_weight, args.catch_ds_weight, args.mydeal_ds_weight])[0]
         merchant_step_counter[merchant] += 1
         try:
             example = next(dataset_it_map[merchant])
@@ -522,6 +524,12 @@ if __name__ == "__main__":
                         help="number of file to load to form batch.")
     parser.add_argument('--add_cate_prob', type=float, default=0.2,
                         help="probibilty for adding category text in input.")
+    parser.add_argument('--amazon_ds_weight', type=float, default=0.65,
+                        help="probibilty for using amazon dataset.")
+    parser.add_argument('--catch_ds_weight', type=float, default=0.25,
+                        help="probibilty for using catch dataset.")
+    parser.add_argument('--mydeal_ds_weight', type=float, default=0.1,
+                        help="probibilty for using mydeal dataset.")
 
     args = parser.parse_args()
 
