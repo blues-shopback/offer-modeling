@@ -170,7 +170,7 @@ def create_neg_pair_dataset(
         zip_ds2 = tf.data.Dataset.zip(tuple([ds7, no_cate_proced_ds]))
         zip_batch_ds2 = zip_ds2.map(_explode_zip_v2)
     else:
-        zip_batch_ds2 = ds7 = batch_neg_pair(zip_batch_ds, batch_size, inp_batch=pre_batch)
+        zip_batch_ds2 = batch_neg_pair(zip_batch_ds, batch_size, inp_batch=pre_batch)
 
     ds8 = zip_batch_ds2.prefetch(prefetch)
 

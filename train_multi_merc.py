@@ -503,6 +503,7 @@ def train(args, logger):
 
         if int(global_step) > 0 and int(global_step) % args.eval_steps == 0:
             if args.eval_repr_path and args.eval_data_path:
+                print()
                 repr_list = tf.io.gfile.glob(os.path.join(args.eval_repr_path, "*.tfrecord"))
                 eval_list = tf.io.gfile.glob(os.path.join(args.eval_data_path, "*.tfrecord"))
                 eval_data(logger, model, args, repr_list, eval_list)
