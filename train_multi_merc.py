@@ -1,19 +1,16 @@
 import os
-import csv
 import json
 import time
 import random
 import argparse
-import functools
 import collections
 
 import numpy as np
 import tensorflow as tf
 
 from utils.logging_conf import get_logger
-from utils.encoder import get_encoder
-from utils.offer_model_eval import eval_query, eval_pairs, encode_and_combine
 
+from data_utils.preprocess import preprocess_token
 from data_utils.offer_dataset_multi_merchant import create_neg_pair_dataset
 
 from models.train_utils import CustomSchedule, AdamWeightDecay, CustomWeightSchedule
@@ -25,55 +22,105 @@ encoder = None
 enc_fn = None
 
 
-def eval_step(logger, model, args):
-    global encoder, enc_fn
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    if encoder is None:
-        bpe_path = os.path.join(dir_path, "resources", "bpe", "bpe_merges_20211108.txt")
-        encoder = get_encoder(bpe_path, 50000)
-    if enc_fn is None:
-        enc_fn = functools.partial(
-            encode_and_combine,
-            encoder=encoder,
-            inp_len=args.max_seq_len,
-            BOS_id=50000,
-            EOS_id=50001,
-            SEP_id=50002,
-            PAD_id=50001
-        )
-    # Start eval pairs
-    logger.info("Eval pairs")
-    pair_file_path = os.path.join(
-        dir_path,
-        "resources",
-        "offer_model_eval_data",
-        "pair20211104.csv")
+def eval_data(logger, model, args, repr_list, eval_list):
+    repr_ds = tf.data.TFRecordDataset(repr_list)
+    repr_dataset = preprocess_token(
+        repr_ds,
+        inp_len=args.max_seq_len,
+        BOS_id=50000,
+        EOS_id=50001,
+        SEP_id=50002,
+        PAD_id=50001,
+        MSK_id=50003,
+        add_mlm_token=False,
+        add_cate_prob=1.0
+    )
+    batch_repr_ds = repr_dataset.batch(args.batch_size)
 
-    pairs = []
-    with open(pair_file_path, "r") as f:
-        reader = csv.DictReader(f)
-        for d in reader:
-            pairs.append(d)
+    eval_ds = tf.data.TFRecordDataset(eval_list)
+    eval_dataset = preprocess_token(
+        eval_ds,
+        inp_len=args.max_seq_len,
+        BOS_id=50000,
+        EOS_id=50001,
+        SEP_id=50002,
+        PAD_id=50001,
+        MSK_id=50003,
+        add_mlm_token=False,
+        add_cate_prob=1.0
+    )
+    batch_eval_ds = eval_dataset.batch(args.batch_size)
 
-    pair_result_str = eval_pairs(model, enc_fn, pairs)
+    repr_cate_l1_id_tensor_list = []
+    repr_output_tensor_list = []
 
-    logger.info(pair_result_str)
+    for example in batch_repr_ds:
+        pooled, cate_l1_id = eval_step(model, example)
+        repr_output_tensor_list.append(pooled)
+        repr_cate_l1_id_tensor_list.append(cate_l1_id)
 
-    # Start eval query
-    logger.info("Eval query")
-    query_file_path = os.path.join(
-        dir_path,
-        "resources",
-        "offer_model_eval_data",
-        "eval_query_iphone_12.csv")
-    offers = []
-    with open(query_file_path, "r") as f:
-        reader = csv.DictReader(f)
-        for d in reader:
-            offers.append(d)
-    query = "iPhone 12"
-    query_result_str = eval_query(model, enc_fn, query, offers)
-    logger.info(query_result_str)
+    # Calculate category repr vector
+    repr_cate_l1_id_arr = tf.concat(repr_cate_l1_id_tensor_list, axis=0).numpy()
+    repr_output_arr = tf.concat(repr_output_tensor_list, axis=0).numpy()
+
+    idx_to_arr = {}
+    for idx, output in zip(repr_cate_l1_id_arr, repr_output_arr):
+        if idx in idx_to_arr:
+            idx_to_arr[idx].append(output)
+        else:
+            idx_to_arr[idx] = [output]
+
+    cate_id_list = []
+    cate_repr_list = []
+    for cate_l1_id in idx_to_arr:
+        mean_arr = np.mean(idx_to_arr[cate_l1_id], axis=0)
+        cate_repr_list.append(mean_arr)
+        cate_id_list.append(cate_l1_id)
+
+    repr_metrix = np.stack(cate_repr_list)
+
+    # Calculate eval offer vector
+    eval_cate_l1_id_tensor_list = []
+    eval_output_tensor_list = []
+    for example in batch_eval_ds:
+        pooled, cate_l1_id = eval_step(model, example)
+        eval_output_tensor_list.append(pooled)
+        eval_cate_l1_id_tensor_list.append(cate_l1_id)
+
+    eval_cate_l1_id_arr = tf.concat(eval_cate_l1_id_tensor_list, axis=0).numpy()
+    eval_output_arr = tf.concat(eval_output_tensor_list, axis=0).numpy()
+
+    rank_list = []
+    cate_id_arr = np.array(cate_id_list)
+    for cate_l1_id, output in zip(eval_cate_l1_id_arr, eval_output_arr):
+        cossim = np.einsum("i,ji->j", output, repr_metrix)
+        sort_idx = np.argsort(cossim).tolist()[::-1]
+
+        rank_cate_id_list = cate_id_arr[sort_idx].tolist()
+
+        if cate_l1_id in cate_id_list:
+            target_rank = rank_cate_id_list.index(cate_l1_id)
+            rank_list.append(target_rank)
+
+    # print summary
+    total_num = len(rank_list)
+    sum_num = sum(rank_list)
+    mean = round((sum_num / total_num) + 1, 2)
+    total_cate_num = len(cate_id_list)
+
+    logger.info("Eval result: {} / {}".format(mean, total_cate_num))
+
+
+@tf.function
+def eval_step(model, example):
+    combined_padded = example["combined_padded"]
+    cate_pos_padded = example["cate_pos_padded"]
+    attn_mask = example["attn_mask"]
+    cate_l1_id = example["cate_l1_id"]
+
+    pooled, output = model(combined_padded, cate_pos_padded, attn_mask)
+
+    return pooled, cate_l1_id
 
 
 @tf.function
@@ -454,6 +501,12 @@ def train(args, logger):
                 "mydeal": 0.
             }
 
+        if int(global_step) > 0 and int(global_step) % args.eval_steps == 0:
+            if args.eval_repr_path and args.eval_data_path:
+                repr_list = tf.io.gfile.glob(os.path.join(args.eval_repr_path, "*.tfrecord"))
+                eval_list = tf.io.gfile.glob(os.path.join(args.eval_data_path, "*.tfrecord"))
+                eval_data(logger, model, args, repr_list, eval_list)
+
         if int(global_step) > args.train_steps:
             save_path = manager.save()
             logger.info("Save checkpoint to: {}".format(save_path))
@@ -489,11 +542,11 @@ if __name__ == "__main__":
     parser.add_argument('--model_dir', type=str, default="", help="Model save path.")
     parser.add_argument('--train_data_path', type=str, required=True,
                         help="train data dir with dataset_config.json inside.")
-    # parser.add_argument('--eval_data_path', type=str,
-    #                     default="/glusterfs/blues/rerank/dataset_20200924/valid_4M.txt",
-    #                     help="eval data path.")
-    # parser.add_argument('--eval_steps', type=int, default=10000, help="Steps eval data each.")
-    # parser.add_argument('--eval_num', type=int, default=100, help="Number of data to eval.")
+    parser.add_argument('--eval_steps', type=int, default=10000, help="Steps eval data.")
+    parser.add_argument('--eval_repr_path', type=str, default="",
+                        help="Path to repr data for eval.")
+    parser.add_argument('--eval_data_path', type=str, default="",
+                        help="Path to data for eval.")
     parser.add_argument('--batch_size', type=int, default=256,
                         help="Model training batch size.")
     parser.add_argument('--max_seq_len', type=int, default=96,
