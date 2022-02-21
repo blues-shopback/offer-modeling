@@ -162,20 +162,20 @@ def train_step(model, opt, example, global_step, mlm_weight_schedule, temperatur
 
 def get_dataset_file_list(data_path, dataset_config):
     amazon_cate_path = os.path.join(data_path, dataset_config.amazon_cate_path, "id*/*.tfrecord")
-    amazon_wo_cate_path = os.path.join(
-        data_path, dataset_config.amazon_wo_cate_path, "*.tfrecord")
+    # amazon_wo_cate_path = os.path.join(
+    #     data_path, dataset_config.amazon_wo_cate_path, "*.tfrecord")
     catch_cate_path = os.path.join(data_path, dataset_config.catch_cate_path, "id*/*.tfrecord")
     mydeal_cate_path = os.path.join(data_path, dataset_config.mydeal_cate_path, "id*/*.tfrecord")
-    mydeal_wo_cate_path = os.path.join(data_path, dataset_config.mydeal_wo_cate_path, "*.tfrecord")
+    # mydeal_wo_cate_path = os.path.join(
+    #     data_path, dataset_config.mydeal_wo_cate_path, "*.tfrecord")
 
     amazon_cate_file_list = tf.io.gfile.glob(amazon_cate_path)
-    amazon_wo_cate_file_list = tf.io.gfile.glob(amazon_wo_cate_path)
+    # amazon_wo_cate_file_list = tf.io.gfile.glob(amazon_wo_cate_path)
     catch_cate_file_list = tf.io.gfile.glob(catch_cate_path)
     mydeal_cate_file_list = tf.io.gfile.glob(mydeal_cate_path)
-    mydeal_wo_cate_file_list = tf.io.gfile.glob(mydeal_wo_cate_path)
+    # mydeal_wo_cate_file_list = tf.io.gfile.glob(mydeal_wo_cate_path)
 
-    return (amazon_cate_file_list, amazon_wo_cate_file_list, catch_cate_file_list,
-            mydeal_cate_file_list, mydeal_wo_cate_file_list)
+    return (amazon_cate_file_list, catch_cate_file_list, mydeal_cate_file_list)
 
 
 def create_dataset_list(file_list, num_ds):
@@ -321,12 +321,11 @@ def train(args, logger):
     data_path = args.train_data_path
     dataset_config = OfferDatasetConfig(json_path=os.path.join(data_path, "dataset_config.json"))
     logger.info(dataset_config.format_params())
-    (amazon_cate_file_list, amazon_wo_cate_file_list, catch_cate_file_list,
-     mydeal_cate_file_list, mydeal_wo_cate_file_list) = get_dataset_file_list(
+    (amazon_cate_file_list, catch_cate_file_list, mydeal_cate_file_list) = get_dataset_file_list(
         data_path, dataset_config)
-    amazon_df = init_dataset(args, amazon_cate_file_list, amazon_wo_cate_file_list, prefetch=64)
+    amazon_df = init_dataset(args, amazon_cate_file_list, None, prefetch=64)
     catch_df = init_dataset(args, catch_cate_file_list, None, prefetch=64)
-    mydeal_df = init_dataset(args, mydeal_cate_file_list, mydeal_wo_cate_file_list, prefetch=64)
+    mydeal_df = init_dataset(args, mydeal_cate_file_list, None, prefetch=64)
     dataset_it_map = {
         "amazon": iter(amazon_df),
         "catch": iter(catch_df),
@@ -385,7 +384,7 @@ def train(args, logger):
         except StopIteration:
             if merchant == "amazon":
                 amazon_df = init_dataset(
-                    args, amazon_cate_file_list, amazon_wo_cate_file_list, prefetch=128)
+                    args, amazon_cate_file_list, None, prefetch=128)
                 del dataset_it_map[merchant]
                 dataset_it_map[merchant] = iter(amazon_df)
                 epoch_amazon.assign_add(1)
@@ -398,7 +397,7 @@ def train(args, logger):
 
             elif merchant == "mydeal":
                 mydeal_df = init_dataset(
-                    args, mydeal_cate_file_list, mydeal_wo_cate_file_list, prefetch=32)
+                    args, mydeal_cate_file_list, None, prefetch=32)
                 del dataset_it_map[merchant]
                 dataset_it_map[merchant] = iter(mydeal_df)
                 epoch_mydeal.assign_add(1)
@@ -568,7 +567,7 @@ if __name__ == "__main__":
     parser.add_argument('--warmup_steps', type=int, default=5000)
     parser.add_argument('--min_lr_ratio', type=float, default=0.01)
     parser.add_argument('--dropout', type=float, default=0.1)
-    parser.add_argument('--weight_decay', type=float, default=0.009)
+    parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--clip', type=float, default=0., help="Global norm clip value.")
     parser.add_argument('--print_status', type=int, default=1000, help="Steps to print status.")
     # parser.add_argument('--print_exp', type=int, default=1, help="Print example for debug.")
@@ -578,11 +577,11 @@ if __name__ == "__main__":
                         help="number of file to load to form batch.")
     parser.add_argument('--add_cate_prob', type=float, default=0.2,
                         help="probibilty for adding category text in input.")
-    parser.add_argument('--amazon_ds_weight', type=float, default=0.65,
+    parser.add_argument('--amazon_ds_weight', type=float, default=0.5,
                         help="probibilty for using amazon dataset.")
     parser.add_argument('--catch_ds_weight', type=float, default=0.25,
                         help="probibilty for using catch dataset.")
-    parser.add_argument('--mydeal_ds_weight', type=float, default=0.1,
+    parser.add_argument('--mydeal_ds_weight', type=float, default=0.25,
                         help="probibilty for using mydeal dataset.")
 
     args = parser.parse_args()

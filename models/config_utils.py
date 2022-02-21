@@ -64,7 +64,7 @@ class BaseConfig:
         """Save to a json file."""
         json_data = {}
         for key in self.keys:
-            json_data[key] = getattr(self, key)
+            json_data[key] = getattr(self, key, None)
 
         json_dir = os.path.dirname(json_path)
         if not os.path.exists(json_dir):
@@ -76,7 +76,7 @@ class BaseConfig:
         """Return params as string."""
         json_data = {}
         for key in self.keys:
-            json_data[key] = getattr(self, key)
+            json_data[key] = getattr(self, key, None)
 
         return pformat(json_data)
 
@@ -93,7 +93,7 @@ class BertConfig(BaseConfig):
     @staticmethod
     def get_keys():
         return ["n_layer", "d_model", "n_head", "d_head", "d_inner", "d_embed",
-                "dropout", "dropatt", "pre_ln", "inp_cate_num", "n_token"]
+                "dropout", "dropatt", "pre_ln", "inp_cate_num", "n_token", "summary_type"]
 
 
 class PriceNetConfig(BaseConfig):
