@@ -157,7 +157,7 @@ class OfferModel(tf.Module):
                 is_training=self.is_training)
             if self.add_pooler:
                 self.pooler = modules.SummarizeSequence(
-                    summary_type="attn",
+                    summary_type=config.summary_type,
                     d_model=config.d_model,
                     n_head=config.n_head,
                     d_head=config.d_head,

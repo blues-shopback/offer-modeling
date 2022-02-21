@@ -9,5 +9,6 @@
     "n_head": 12,
     "n_layer": 12,
     "n_token": 50010,
-    "pre_ln": true
+    "pre_ln": true,
+    "summary_type": "attn"
 }
