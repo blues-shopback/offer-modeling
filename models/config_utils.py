@@ -84,9 +84,9 @@ class BaseConfig:
 class OfferDatasetConfig(BaseConfig):
     @staticmethod
     def get_keys():
-        return ["amazon_cate_path", "amazon_wo_cate_path", "amazon_cate_size",
+        return ["amazon_cate_path", "amazon_cate_size",
                 "catch_cate_path", "catch_cate_size",
-                "mydeal_cate_path", "mydeal_wo_cate_path", "mydeal_cate_size"]
+                "mydeal_cate_path", "mydeal_cate_size"]
 
 
 class BertConfig(BaseConfig):
