@@ -179,28 +179,37 @@ def get_dataset_file_list(data_path, dataset_config):
 
 
 def create_dataset_list(file_list, num_ds):
-    random.shuffle(file_list)
-    if num_ds <= 1:
-        return tf.data.TFRecordDataset(file_list)
     np_file_list = np.array(file_list)
 
     idx_range = np.arange(len(file_list))
     ran_idx = np.random.permutation(idx_range)
 
-    ds_list = []
+    file_list_list = []
 
     ds_file_num = len(file_list) // num_ds
-    for i in range(num_ds):
+    if ds_file_num <= 0:
+        ds_file_num = 1
+    for i in range(min(num_ds, len(file_list))):
         start = i * ds_file_num
-        ran_idx
         ran_index1 = ran_idx[start:]
         ran_index2 = ran_idx[:start]
 
         ran_index = np.concatenate((ran_index1, ran_index2))
 
         ran_file_list = np_file_list[ran_index]
-        dataset = tf.data.TFRecordDataset(ran_file_list)
+        file_list_list.append(ran_file_list)
+
+    if ds_file_num <= 1:
+        n = num_ds // len(file_list)
+        file_list_list = file_list_list + file_list_list * n
+        file_list_list = file_list_list[:num_ds]
+
+    ds_list = []
+    for file_l in file_list_list:
+        dataset = tf.data.TFRecordDataset(file_l)
         ds_list.append(dataset)
+
+    assert len(ds_list) == num_ds
 
     return ds_list
 
