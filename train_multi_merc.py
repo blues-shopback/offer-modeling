@@ -11,7 +11,7 @@ import tensorflow as tf
 from utils.logging_conf import get_logger
 
 from data_utils.preprocess import preprocess_token
-from data_utils.offer_dataset_multi_merchant import create_neg_pair_dataset
+from data_utils.offer_dataset_multi_merchant_v2 import create_neg_pair_dataset
 
 from models.train_utils import CustomSchedule, AdamWeightDecay, CustomWeightSchedule
 from models.transformer import offer_model
@@ -215,16 +215,16 @@ def create_dataset_list(file_list, num_ds):
 
 
 def init_dataset(args, file_list, wo_cate_list, prefetch):
-    num_ds = args.num_dataset
-    if wo_cate_list is not None:
-        ds_list = create_dataset_list(file_list, num_ds-1)
-        ds_wo_cate = create_dataset_list(wo_cate_list, 1)
-    else:
-        ds_list = create_dataset_list(file_list, num_ds)
-        ds_wo_cate = None
+    # num_ds = args.num_dataset
+    # if wo_cate_list is not None:
+    #     ds_list = create_dataset_list(file_list, num_ds-1)
+    #     ds_wo_cate = create_dataset_list(wo_cate_list, 1)
+    # else:
+    #     ds_list = create_dataset_list(file_list, num_ds)
+    #     ds_wo_cate = None
+    ds_list = [tf.data.TFRecordDataset(f) for f in file_list]
     processed_dataset = create_neg_pair_dataset(
         ds_list,
-        ds_wo_cate,
         batch_size=args.batch_size,
         inp_len=args.max_seq_len,
         BOS_id=50000,
@@ -582,8 +582,8 @@ if __name__ == "__main__":
     # parser.add_argument('--print_exp', type=int, default=1, help="Print example for debug.")
     parser.add_argument('--save_steps', type=int, default=10000, help="Steps to save model.")
     parser.add_argument('--debug', action='store_true', help="Debug mode.")
-    parser.add_argument('--num_dataset', type=int, default=64,
-                        help="number of file to load to form batch.")
+    # parser.add_argument('--num_dataset', type=int, default=64,
+    #                     help="number of file to load to form batch.")
     parser.add_argument('--add_cate_prob', type=float, default=0.2,
                         help="probibilty for adding category text in input.")
     parser.add_argument('--amazon_ds_weight', type=float, default=0.5,

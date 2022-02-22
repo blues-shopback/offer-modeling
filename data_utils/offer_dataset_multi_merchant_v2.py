@@ -72,11 +72,12 @@ def create_neg_pair_dataset(
 
     def _explode_random_zip(*example):
         bsz = batch_size
+        num_mini_batch = bsz // 4
 
         # random idx
-        id_num = bsz // 4
-        idx = tf.random.shuffle(tf.range(len(example)))
-        idxs = tf.slice(idx, [0], [id_num])
+        total_idx_num = tf.shape(example[0]["combined_padded"])[0] * len(ds_list)
+        idx = tf.random.shuffle(tf.range(total_idx_num))
+        idxs = tf.slice(idx, [0], [num_mini_batch])
 
         keys = list(example[0].keys())
         combined_example = {}
@@ -109,7 +110,7 @@ def create_neg_pair_dataset(
                               rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
                               add_mlm_token=add_mlm_token)
 
-        ds3 = ds.shuffle(batch_size*32)
+        ds3 = ds.shuffle(batch_size*64)
         ds4 = ds3.group_by_window(lambda x: x["cate_l1_id"],
                                   lambda key, ds: ds.batch(2, drop_remainder=True), window_size=2)
         ds5 = ds4.filter(_check_catel2_equal)
@@ -133,7 +134,7 @@ def create_neg_pair_dataset(
         to_bsz = num_mini_batch // num_ds + 1
 
     proced_ds = tuple([_process_ds(ds, remove_non_use, to_bsz) for ds in ds_list])
-    zip_ds = tf.data.Dataset.zip(tuple(proced_ds))
+    zip_ds = tf.data.Dataset.zip(proced_ds)
     zip_batch_ds = zip_ds.map(_explode_random_zip)
     zip_batch_ds2 = zip_batch_ds.map(_shift_pair_idx)
 
