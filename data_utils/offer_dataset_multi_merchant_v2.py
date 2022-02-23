@@ -109,8 +109,8 @@ def create_neg_pair_dataset(
                               PAD_id=PAD_id, MSK_id=MSK_id, mask_prob=mask_prob,
                               rand_token_size=rand_token_size, add_cate_prob=add_cate_prob,
                               add_mlm_token=add_mlm_token)
-
-        ds3 = ds.shuffle(batch_size*64)
+        ds2 = ds.repeat(10)
+        ds3 = ds2.shuffle(batch_size*4)
         ds4 = ds3.group_by_window(lambda x: x["cate_l1_id"],
                                   lambda key, ds: ds.batch(2, drop_remainder=True), window_size=2)
         ds5 = ds4.filter(_check_catel2_equal)
