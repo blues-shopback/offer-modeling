@@ -13,7 +13,7 @@ def _add_pos_pair_and_label(example):
     example["cate_pos_padded"] = _duplicate_first(example["cate_pos_padded"])
     example["mlm_pos_padded"] = _duplicate_first(example["mlm_pos_padded"])
     example["attn_mask"] = _duplicate_first(example["attn_mask"])
-    example["cate_id"] = _duplicate_first(example["cate_id"])
+    example["cate_str_id"] = _duplicate_first(example["cate_str_id"])
     example["cate_l1_id"] = _duplicate_first(example["cate_l1_id"])
 
     positive_pair1 = tf.constant([0, 2], dtype=tf.int32)

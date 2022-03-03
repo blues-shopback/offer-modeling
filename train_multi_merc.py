@@ -131,7 +131,7 @@ def train_step(model, opt, example, global_step, mlm_weight_schedule, temperatur
     cate_pos_padded = example["cate_pos_padded"]
     attn_mask = example["attn_mask"]
     pos_pair_idx = example["pos_pair_idx"]
-    cate_target = example["cate_l1_id"]
+    cate_target = example["cate_str_id"]
 
     masked_target = combined_padded * mlm_pos_padded
 

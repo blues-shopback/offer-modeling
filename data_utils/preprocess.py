@@ -8,7 +8,7 @@ def _parse_function(example_proto):
     feature_description = {
         'cate_l1': tf.io.FixedLenFeature([], tf.string, default_value=""),
         'cate_l2': tf.io.FixedLenFeature([], tf.string, default_value=""),
-        'cate_id': tf.io.FixedLenFeature([], tf.int64, default_value=-1),
+        'cate_str_id': tf.io.FixedLenFeature([], tf.int64, default_value=-1),
         'cate_l1_id': tf.io.FixedLenFeature([], tf.int64, default_value=-1),
         'title_enc': tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
         'x_desc1_enc': tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
