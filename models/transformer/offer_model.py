@@ -31,6 +31,10 @@ class OfferModel(tf.Module):
 
         return train_vars
 
+    @tf.function
+    def traced_call(self, inp, pos_cate, inp_mask):
+        return self.__call__(inp, pos_cate, inp_mask)
+
     @tf.Module.with_name_scope
     def get_contrastive_loss(self, pooled, pos_pair_idx, temp=1.0):
         """
