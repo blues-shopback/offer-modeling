@@ -171,7 +171,7 @@ class OfferModel(tf.Module):
                     is_training=self.is_training,
                     name="attn_pooler",
                     dtype=self.dtype,
-                    use_proj=self.is_training
+                    use_proj=True
                 )
 
         output = self.encoder(inp, pos_cate, inp_mask)
