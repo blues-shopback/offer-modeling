@@ -24,7 +24,7 @@ class OfferModel(tf.Module):
         if self.add_pooler:
             train_vars += self.pooler.trainable_variables
         if self.built_cate:
-            pooler, cate_w, cate_b = self.merchant_classify_layey_map[merchant]
+            pooler, cate_w, cate_b = self.merchant_classify_layer_map[merchant]
             train_vars += pooler.trainable_variables
             train_vars.append(cate_w)
             train_vars.append(cate_b)
@@ -107,8 +107,8 @@ class OfferModel(tf.Module):
 
         losses = 0.
 
-        for merc in self.merchant_classify_layey_map:
-            pool_layer, cate_w, cate_b = self.merchant_classify_layey_map[merc]
+        for merc in self.merchant_classify_layer_map:
+            pool_layer, cate_w, cate_b = self.merchant_classify_layer_map[merc]
 
             m_target = tf.cond(
                 tf.equal(merchant, merc), lambda: masked_target, lambda: mock_target)
@@ -166,11 +166,11 @@ class OfferModel(tf.Module):
             ex: [(amazon, 300),]
         """
         if not self.built_cate:
-            self.merchant_classify_layey_map = {}
+            self.merchant_classify_layer_map = {}
             for merchant, cate_size in merchant_and_cate_size_list:
                 pool_layer, cate_w, cate_b = self.create_classify_layer(
                     merchant, cate_size)
-                self.merchant_classify_layey_map[merchant] = (pool_layer, cate_w, cate_b)
+                self.merchant_classify_layer_map[merchant] = (pool_layer, cate_w, cate_b)
                 setattr(self, merchant, pool_layer)
 
             self.built_cate = True
