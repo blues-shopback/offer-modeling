@@ -53,13 +53,37 @@ class OfferModel(tf.Module):
         # temperature for softmax
         self_cossim = self_cossim / temp
 
-        # shape [any]
+        # positive pair cossim: shape [any]
         pos_cos = tf.gather_nd(self_cossim, pos_pair_idx)
-        # shape [any, bsz]
-        others_cos = tf.gather_nd(self_cossim, pos_pair_idx[:, 0:1])
+
+        # extract softmax_denominator
+        # Remove diag value
+        bsz = tf.shape(pooled)[0]
+        diag_ones = tf.ones([bsz, bsz], dtype=self.dtype)
+        # Set diag to 0
+        bool_mask = tf.linalg.set_diag(
+            diag_ones,
+            tf.zeros([bsz], dtype=self.dtype)
+        )
+        # Set positive pair to 0
+        bool_mask = tf.tensor_scatter_nd_add(
+            bool_mask,
+            pos_pair_idx,
+            -tf.ones(tf.shape(pos_pair_idx)[0], dtype=tf.float32)
+        )
+        # gather mask and value from target batch index
+        gather_self_cossim = tf.gather_nd(self_cossim, pos_pair_idx[:, 0:1])
+        gather_bool_mask = tf.gather_nd(bool_mask, pos_pair_idx[:, 0:1])
+        # Exclude position in diag and positive pair
+        extract_cossim = tf.boolean_mask(gather_self_cossim, gather_bool_mask)
+        # shape [any, bsz - 2]
+        extract_cossim = tf.reshape(
+            extract_cossim,
+            [tf.shape(gather_self_cossim)[0], bsz - 2]
+        )
 
         # cross-entropy
-        softmax_denominator = tf.reduce_logsumexp(others_cos, axis=1)
+        softmax_denominator = tf.reduce_logsumexp(extract_cossim, axis=1)
 
         contrastive_loss = -1 * (pos_cos - softmax_denominator)
 
