@@ -69,7 +69,7 @@ class OfferModel(tf.Module):
         bool_mask = tf.tensor_scatter_nd_add(
             bool_mask,
             pos_pair_idx,
-            -tf.ones(tf.shape(pos_pair_idx)[0], dtype=tf.float32)
+            -tf.ones(tf.shape(pos_pair_idx)[0], dtype=self.dtype)
         )
         # gather mask and value from target batch index
         gather_self_cossim = tf.gather_nd(self_cossim, pos_pair_idx[:, 0:1])
@@ -84,6 +84,8 @@ class OfferModel(tf.Module):
 
         # cross-entropy
         softmax_denominator = tf.reduce_logsumexp(extract_cossim, axis=1)
+        # Add e ^ (1 / temp) back
+        softmax_denominator += 1 / temp
 
         contrastive_loss = -1 * (pos_cos - softmax_denominator)
 
