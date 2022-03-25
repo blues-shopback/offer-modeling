@@ -342,11 +342,19 @@ def train(args, logger):
         "mydeal": iter(mydeal_df),
     }
     # init classify layer
-    model.build_classify_layer([
-        ("amazon", dataset_config.amazon_cate_size),
-        ("catch", dataset_config.catch_cate_size),
-        ("mydeal", 3000)
-    ])
+    merchant_class_list = []
+    merchant_class_layers = []
+    if args.amazon_classify > 0:
+        merchant_class_list.append("amazon")
+        merchant_class_layers.append(("amazon", dataset_config.amazon_cate_size))
+    if args.catch_classify > 0:
+        merchant_class_list.append("catch")
+        merchant_class_layers.append(("catch", dataset_config.catch_cate_size))
+    if args.mydeal_classify > 0:
+        merchant_class_list.append("mydeal")
+        merchant_class_layers.append(("mydeal", dataset_config.mydeal_cate_size))
+
+    model.build_classify_layer(merchant_class_layers)
 
     # Check model parameters
     exam = next(iter(dataset_it_map["amazon"]))
@@ -593,6 +601,12 @@ if __name__ == "__main__":
                         help="probibilty for using catch dataset.")
     parser.add_argument('--mydeal_ds_weight', type=float, default=0.25,
                         help="probibilty for using mydeal dataset.")
+    parser.add_argument('--amazon_classify', type=float, default=1.,
+                        help="add amazon classify loss if larger 0.")
+    parser.add_argument('--catch_classify', type=float, default=1.,
+                        help="add catch classify loss if larger 0.")
+    parser.add_argument('--mydeal_classify', type=float, default=1.,
+                        help="add mydeal classify loss if larger 0.")
 
     args = parser.parse_args()
 
