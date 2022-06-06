@@ -82,7 +82,7 @@ class SummarizeSequence(tf.Module):
             summary_last = self.attn_layer_last(bias_last, first_hidden, first_hidden, input_mask,
                                                 self.is_training)
             summary_last = summary_last[0]
-            summary = tf.stack(summary_first, summary_last)
+            summary = tf.stack([summary_first, summary_last])
             summary = tf.reduce_mean(summary, axis=0)
         else:
             raise ValueError('Unsupported summary type {}'.format(self.summary_type))
