@@ -203,7 +203,11 @@ class OfferModel(tf.Module):
         output = self.encoder(inp, pos_cate, inp_mask)
 
         if self.add_pooler:
-            pooled = self.pooler(output, inp_mask)
+            if config.summary_type == "first-last-avg":
+                first_layer_output = self.encoder.attn_layer.layer_outpus[0]
+                pooled = self.pooler(output, inp_mask, first_hidden=first_layer_output)
+            else:
+                pooled = self.pooler(output, inp_mask)
         else:
             pooled = None
 

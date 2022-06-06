@@ -86,6 +86,8 @@ class AttnLayer(tf.Module):
         output_h = self.pre_proj_layer(output_h)
         output_h = self.pre_drop(output_h, training=self.is_training)
 
+        self.layer_outpus = []
+
         for attn, ffn, lnorm_tuple in zip(self.multi_attns, self.post_ffns, self.layer_norms):
             ln1, ln2 = lnorm_tuple
             if config.pre_ln:
@@ -106,6 +108,8 @@ class AttnLayer(tf.Module):
                 output_ori = output_h
                 output_h = ffn(output_h)
                 output_h = ln2(output_h + output_ori)
+
+            self.layer_outpus.append(output_h)
 
         if config.pre_ln:
             if not hasattr(self, "layer_norm_out"):
