@@ -30,6 +30,22 @@ class BaseConfig:
         elif data_dict is not None:
             self.init_from_data(data_dict)
 
+    @classmethod
+    def generate_template(cls, path):
+        keys = cls.get_keys()
+        data = {}
+        for key in keys:
+            data[key] = None
+
+        dir = os.path.dirname(path)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+        with open(path, "w") as f:
+            json.dump(data, f, indent=4, sort_keys=True)
+
+        return data
+
     @staticmethod
     def get_keys():
         raise NotImplementedError
@@ -48,7 +64,7 @@ class BaseConfig:
         """Save to a json file."""
         json_data = {}
         for key in self.keys:
-            json_data[key] = getattr(self, key)
+            json_data[key] = getattr(self, key, None)
 
         json_dir = os.path.dirname(json_path)
         if not os.path.exists(json_dir):
@@ -60,16 +76,24 @@ class BaseConfig:
         """Return params as string."""
         json_data = {}
         for key in self.keys:
-            json_data[key] = getattr(self, key)
+            json_data[key] = getattr(self, key, None)
 
         return pformat(json_data)
+
+
+class OfferDatasetConfig(BaseConfig):
+    @staticmethod
+    def get_keys():
+        return ["amazon_cate_path", "amazon_cate_size",
+                "catch_cate_path", "catch_cate_size",
+                "mydeal_cate_path", "mydeal_cate_size"]
 
 
 class BertConfig(BaseConfig):
     @staticmethod
     def get_keys():
         return ["n_layer", "d_model", "n_head", "d_head", "d_inner", "d_embed",
-                "dropout", "dropatt", "pre_ln", "inp_cate_num", "n_token"]
+                "dropout", "dropatt", "pre_ln", "inp_cate_num", "n_token", "summary_type"]
 
 
 class PriceNetConfig(BaseConfig):

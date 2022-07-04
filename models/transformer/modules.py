@@ -20,7 +20,7 @@ class SummarizeSequence(tf.Module):
         self.is_training = is_training
 
     @tf.Module.with_name_scope
-    def __call__(self, hidden, input_mask=None):
+    def __call__(self, hidden, input_mask=None, first_hidden=None):
         """
         Args:
             hidden: shape 3D [bsz, qlen, d_model]
@@ -52,6 +52,38 @@ class SummarizeSequence(tf.Module):
 
             summary = self.attn_layer(bias, hidden, hidden, input_mask, self.is_training)
             summary = summary[0]
+        elif self.summary_type == "first-last-avg":
+            if first_hidden is None:
+                ValueError("Arg first_hidden can not be None in 'first-last-avg' summary_type")
+            # Init layers
+            if not hasattr(self, "attn_layer_last"):
+                self.attn_layer_last = MultiheadAttn(
+                    self.d_model, self.n_head, self.d_head, self.dropout, self.dropatt,
+                    self.initializer, name="attn_layer_last")
+                self.summary_bias_last = tf.Variable(
+                    self.initializer([self.d_model], dtype=self.dtype),
+                    name="summary_bias_last")
+                self.attn_layer_first = MultiheadAttn(
+                    self.d_model, self.n_head, self.d_head, self.dropout, self.dropatt,
+                    self.initializer, name="attn_layer_first")
+                self.summary_bias_first = tf.Variable(
+                    self.initializer([self.d_model], dtype=self.dtype),
+                    name="summary_bias_first")
+
+            bsz = tf.shape(hidden)[1]
+            bias_first = tf.tile(self.summary_bias_first[None, None], [1, bsz, 1])
+            bias_last = tf.tile(self.summary_bias_last[None, None], [1, bsz, 1])
+            if input_mask is not None:
+                input_mask = input_mask[None, :, :, None]
+
+            summary_first = self.attn_layer_first(bias_first, hidden, hidden, input_mask,
+                                                  self.is_training)
+            summary_first = summary_first[0]
+            summary_last = self.attn_layer_last(bias_last, first_hidden, first_hidden, input_mask,
+                                                self.is_training)
+            summary_last = summary_last[0]
+            summary = tf.stack([summary_first, summary_last])
+            summary = tf.reduce_mean(summary, axis=0)
         else:
             raise ValueError('Unsupported summary type {}'.format(self.summary_type))
 

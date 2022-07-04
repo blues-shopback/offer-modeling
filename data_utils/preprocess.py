@@ -6,13 +6,20 @@ import tensorflow as tf
 
 def _parse_function(example_proto):
     feature_description = {
-        'cate_l1': tf.io.FixedLenFeature([], tf.string),
-        'cate_l2': tf.io.FixedLenFeature([], tf.string),
+        'cate_l1': tf.io.FixedLenFeature([], tf.string, default_value=""),
+        'cate_l2': tf.io.FixedLenFeature([], tf.string, default_value=""),
+        'cate_str_id': tf.io.FixedLenFeature([], tf.int64, default_value=-1),
+        'cate_l1_id': tf.io.FixedLenFeature([], tf.int64, default_value=-1),
         'title_enc': tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
         'x_desc1_enc': tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
         'x_cate1_enc': tf.io.FixedLenSequenceFeature([], tf.int64, allow_missing=True),
     }
     return tf.io.parse_single_example(example_proto, feature_description)
+
+
+def filter_combined_inp(example):
+    combined = example["combined"]
+    return tf.greater(tf.shape(combined)[0], 4)
 
 
 def get_combine_inp_fn(inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, add_cate_prob=0.1):
@@ -191,6 +198,7 @@ def preprocess_token(ds, inp_len=256, BOS_id=50000, EOS_id=50001, SEP_id=50002, 
         ds
         .map(_parse_function)
         .map(combine_inp_fn)
+        .filter(filter_combined_inp)
     )
     if add_mlm_token:
         mlm_token_fn = get_mlm_token_fn(
