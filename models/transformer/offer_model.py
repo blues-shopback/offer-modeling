@@ -85,7 +85,7 @@ class OfferModel(tf.Module):
         # cross-entropy
         softmax_denominator = tf.reduce_logsumexp(extract_cossim, axis=1)
         # Add e ^ (1 / temp) back
-        softmax_denominator += 1 / temp
+        # softmax_denominator += 1 / temp
 
         contrastive_loss = -1 * (pos_cos - softmax_denominator)
 
