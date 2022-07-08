@@ -167,6 +167,9 @@ class OfferModel(tf.Module):
     @tf.Module.with_name_scope
     def create_classify_layer(self, name, cate_size):
         config = self.config
+
+        name = name.replace("-", "_")
+
         pool_layer = modules.SummarizeSequence(
             summary_type="attn",
             d_model=config.d_model,
