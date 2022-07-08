@@ -4,7 +4,7 @@ from models.transformer import modules, base_bert
 
 
 class OfferModel(tf.Module):
-    def __init__(self, config, initializer=None, name="offer_model", dtype=tf.float32,
+    def __init__(self, config, initializer=None, name="offer_model_v2", dtype=tf.float32,
                  is_training=True, add_pooler=True):
         super().__init__(name=name)
         self.config = config
@@ -164,6 +164,7 @@ class OfferModel(tf.Module):
 
         return reduce_loss
 
+    @tf.Module.with_name_scope
     def create_classify_layer(self, name, cate_size):
         config = self.config
         pool_layer = modules.SummarizeSequence(
