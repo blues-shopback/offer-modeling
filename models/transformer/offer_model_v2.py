@@ -165,13 +165,13 @@ class OfferModel(tf.Module):
         return reduce_loss
 
     @tf.Module.with_name_scope
-    def create_classify_layer(self, name, cate_size):
+    def create_classify_layer(self, name, cate_size, summary_type="attn"):
         config = self.config
 
         name = name.replace("-", "_")
 
         pool_layer = modules.SummarizeSequence(
-            summary_type="attn",
+            summary_type=summary_type,
             d_model=config.d_model,
             n_head=config.n_head,
             d_head=config.d_head,
@@ -204,7 +204,7 @@ class OfferModel(tf.Module):
             self.merchant_classify_layer_map = {}
             for merchant, cate_size in merchant_and_cate_size_list:
                 pool_layer, cate_w, cate_b = self.create_classify_layer(
-                    merchant, cate_size)
+                    merchant, cate_size, summary_type="first")
                 self.merchant_classify_layer_map[merchant] = (pool_layer, cate_w, cate_b)
                 setattr(self, merchant, pool_layer)
 
