@@ -80,9 +80,11 @@ class OfferModel(tf.Module):
             extract_cossim1,
             [tf.shape(gather_self_cossim)[0], -1]
         )
+        # Add positive pair to decominator
+        extract_cossim3 = tf.concat([extract_cossim2, tf.transpose(pos_cos[None])], axis=-1)
 
         # cross-entropy
-        softmax_denominator = tf.reduce_logsumexp(extract_cossim2, axis=1)
+        softmax_denominator = tf.reduce_logsumexp(extract_cossim3, axis=1)
 
         contrastive_loss = -1 * (pos_cos - softmax_denominator)
 
